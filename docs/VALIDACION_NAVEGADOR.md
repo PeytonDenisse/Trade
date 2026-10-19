@@ -1,9 +1,9 @@
-# Validación de navegador — 19 de octubre de 2026
+# Validación — 19 de octubre de 2026
 
-La portada, los controles de exploración y la pantalla Recorrido de demo se renderizan en el navegador de pruebas. Al entrar como cliente, el servidor rechaza correctamente la sesión porque esta vista previa no recibe una identidad de propietario de Sites. No se modificó esta protección.
+Repositorio privado creado: https://github.com/PeytonDenisse/Trade. Código completo y workflow de CI publicados. Primera ejecución: https://github.com/PeytonDenisse/Trade/actions/runs/39340715394; tipos, pruebas y compilación completados correctamente.
 
-El recorrido autenticado (solicitud, autorización de proveedor, cotización, selección, evidencias, terminación, confirmación y reseña) aún NO está aprobado en navegador. Las pruebas de API cubren estas operaciones, pero no sustituyen esta validación visual.
+Diez proveedores ficticios cargados en la instancia alojada. La carga se repitió sin duplicados y se verificó una reseña de ejemplo.
 
-La creación del repositorio GitHub requiere iniciar sesión en el navegador: el conector disponible no expone creación de repositorios. La configuración de CI usa la versión de pnpm declarada en package.json y ejecuta tipos, pruebas y compilación; aún no hay una ejecución remota comprobada. El despliegue actual se realiza mediante Sites; no se declara CD desde GitHub activo.
+En navegador se verificaron portada y pantalla Recorrido de demo. El acceso a los roles fue rechazado en la vista previa por ausencia de identidad de propietario de Sites. No se modificó esa protección. El recorrido autenticado completo aún NO está aprobado en navegador; las pruebas de API no sustituyen esta comprobación.
 
-Las historias permanecen en revisión.
+El despliegue actual usa Sites. CD desde GitHub sigue pendiente de una integración compatible con el alojamiento y sus credenciales. Las historias permanecen en revisión.
