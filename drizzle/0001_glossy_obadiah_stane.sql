@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `quotes_request_provider_unique` ON `quotes` (`request`,`provider`);

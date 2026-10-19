@@ -1,0 +1,7 @@
+export const trades=['Plomería','Electricidad','Carpintería','Cerrajería','Pintura','Albañilería','Mantenimiento'];
+export function required(v:unknown,label:string,max=2000){if(typeof v!=='string'||!v.trim()||v.length>max)throw new Error(`${label}: completa el campo (máximo ${max} caracteres).`);return v.trim()}
+export function trade(v:unknown){if(!trades.includes(String(v)))throw new Error('Selecciona un oficio válido.');return String(v)}
+export function price(v:unknown){const n=Number(v);if(!Number.isFinite(n)||n<=0||n>10000000)throw new Error('El precio debe ser mayor que cero y menor a 10 millones.');return Math.round(n*100)/100}
+export function stars(v:unknown){const n=Number(v);if(!Number.isInteger(n)||n<1||n>5)throw new Error('Selecciona de 1 a 5 estrellas.');return n}
+export function date(v:unknown){const s=String(v);if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||isNaN(Date.parse(s))||new Date(s).toISOString().slice(0,10)!==s||s<new Date().toISOString().slice(0,10))throw new Error('Selecciona una fecha válida, de hoy en adelante.');return s}
+export async function passwordHash(password:string,salt:string){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:100000,hash:'SHA-256'},key,256);return Array.from(new Uint8Array(bits),b=>b.toString(16).padStart(2,'0')).join('')}

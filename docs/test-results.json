@@ -1,0 +1,160 @@
+{
+  "executedAt": "2026-10-19T23:09:45.872Z",
+  "environment": "Node SQLite in-memory + bucket adapter; same API handler as deployment",
+  "results": [
+    {
+      "historia": "HU-08, HU-11, HU-19",
+      "escenario": "Valores inválidos rechazados",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-01",
+      "escenario": "Registro de cuenta con nombre, correo y contraseña",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-02",
+      "escenario": "Acceso válido y rechazo de contraseña incorrecta",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-03",
+      "escenario": "Solicitud pendiente con documentos e información obligatoria",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-04",
+      "escenario": "Solo administración aprueba y habilita proveedores",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-05",
+      "escenario": "Filtro por oficio y exclusión de perfiles pendientes",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-06",
+      "escenario": "Perfil público completo sin documento privado",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-08",
+      "escenario": "Solicitud asociada a su cliente",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-09",
+      "escenario": "Imagen almacenada y asociada a solicitud",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-10",
+      "escenario": "Solo solicitudes activas del oficio registrado",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-11",
+      "escenario": "Cotización con precio y alcance persistida",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-12",
+      "escenario": "Propietario consulta propuestas recibidas",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-13",
+      "escenario": "Aceptación única por el propietario",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-14",
+      "escenario": "Evidencia inicial solo del proveedor asignado",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-15",
+      "escenario": "Evidencia final solo del proveedor asignado",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-16",
+      "escenario": "Evidencias antes y después del mismo servicio disponibles",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-17",
+      "escenario": "Proveedor marca terminado",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-18",
+      "escenario": "Cliente confirma completado",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-19",
+      "escenario": "Estrellas válidas asociadas a servicio y proveedor",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-20",
+      "escenario": "Comentario independiente sin perder la calificación",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "HU-07",
+      "escenario": "Trabajos completados publicados en perfil",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Seguridad",
+      "escenario": "Acceso por rol, privacidad de documentos, cierre de sesión y origen",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    }
+  ]
+}
