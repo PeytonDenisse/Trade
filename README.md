@@ -25,6 +25,17 @@ Usa la dirección impresa por el servidor. Ejecuta la migración solo una vez en
 
 Para crear un administrador local, registra una cuenta ficticia y utiliza la consola de la base local con una actualización de su rol. No existe autoasignación de administración en el registro normal. En la instancia privada alojada, `Recorrido de demo` ofrece tres identidades ficticias y permite realizar la aprobación sin configurar contraseñas de demostración.
 
+## MongoDB Atlas
+Copia `.env.example` a `.env` y completa `MONGODB_URI` con tu usuario y contraseña. `.env` no se versiona.
+
+```sh
+pnpm db:ping                                   # comprueba la conexión
+pnpm db:setup                                  # crea las 7 colecciones con validación e índices únicos
+pnpm db:setup --import ruta/a/Tradesqlite.sqlite   # además copia las filas desde SQLite
+```
+
+Las colecciones replican las tablas de `db/schema.ts`. La aplicación todavía lee y escribe en D1; migrar `lib/api.ts` a MongoDB es el siguiente paso.
+
 ## Demostración alojada
 Mantener acceso solo para el propietario. Configurar `DEMO_ENABLED=true` con las variables del alojamiento y publicar para aplicarlo. El acceso a roles demo exige identidad autenticada por ChatGPT. Al cambiar la audiencia, desactivar antes la demo y definir administradores explícitos. Los visitantes no tienen acceso anónimo a esta instancia.
 
