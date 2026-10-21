@@ -1,14 +1,32 @@
-import type {Db} from 'mongodb';
+import {Binary,type Db} from 'mongodb';
 import {seedCatalog} from './catalog-seed';
 import {demo} from './demo';
 import {required,trade,price,stars,date,passwordHash} from './rules';
 import {withDb,type DbEnv} from '../db/mongo';
-type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string};
+type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string,DEMO_ACCESS_CODE?:string,MONGODB_FILES?:string};
 const json=(data:any,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 const id=()=>crypto.randomUUID();
 // Replaces the SQL JOIN on users: copies the user's name from `field` into `as`.
 const withName=(field:string,as:string)=>[{$lookup:{from:'users',localField:field,foreignField:'id',as:'_u'}},{$set:{[as]:{$first:'$_u.name'}}},{$project:{_id:0,_u:0}}];
-export function handle(req:Request,env:Env){return withDb(env,db=>route(req,env,db)).catch((e:any)=>json({error:e.message||'No pudimos completar la operación.'},500))}
+// R2 remains preferred. Small demo uploads can use MongoDB on hosts without R2.
+function mongoStorage(db:Db){
+ const objects=db.collection<{_id:string,data:Binary}>('file_objects');
+ return {
+  async put(key:string,data:Uint8Array){
+   await objects.updateOne({_id:key},{$set:{data:new Binary(data)}},{upsert:true});
+  },
+  async get(key:string){
+   const object=await objects.findOne({_id:key});
+   return object?{body:new Uint8Array(object.data.value())}:null;
+  }
+ };
+}
+export function handle(req:Request,env:Env){
+ return withDb(env,db=>{
+  const BUCKET=env.BUCKET||(env.MONGODB_FILES==='true'?mongoStorage(db):undefined);
+  return route(req,{...env,BUCKET},db);
+ }).catch((e:any)=>json({error:e.message||'No pudimos completar la operación.'},500));
+}
 async function route(req:Request,env:Env,db:Db){
  const url=new URL(req.url),path=url.pathname.replace(/^\/api\//,''),c=(name:string)=>db.collection<any>(name);
  const one=(name:string,filter:any,projection:any={})=>c(name).findOne(filter,{projection:{_id:0,...projection}});
@@ -47,7 +65,7 @@ async function route(req:Request,env:Env,db:Db){
  const b:any=await req.json().catch(()=>fail('Datos inválidos.'));
  // This shared seed endpoint relies on the verified owner-private Sites boundary.
  if(path==='demo-catalog')return await seedCatalog(env,db);
- if(path==='demo')return await demo(req,env,db,b.role);
+ if(path==='demo')return await demo(req,env,db,b.role,b.accessCode);
  if(path==='register'||path==='login'){
  const email=required(b.email,'Correo',254).toLowerCase(),pw=required(b.password,'Contraseña',128);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail('Escribe un correo válido.');let u:any;
  if(path==='register'){if(pw.length<10)fail('La contraseña debe tener al menos 10 caracteres.');if(await one('users',{email}))fail('Este correo ya tiene una cuenta.',409);const uid=id(),salt=id();await c('users').insertOne({id:uid,name:required(b.name,'Nombre',100),email,hash:await passwordHash(pw,salt),salt,role:'cliente'});u={id:uid}}else{u=await one('users',{email});if(!u||await passwordHash(pw,u.salt)!==u.hash)fail('Correo o contraseña incorrectos.',401)}const session=id()+id();await c('sessions').insertOne({token:session,user_id:u.id,expires:Date.now()+86400000});return json({ok:true},200,{'Set-Cookie':`trade_session=${session}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${url.protocol==='https:'?'; Secure':''}`})

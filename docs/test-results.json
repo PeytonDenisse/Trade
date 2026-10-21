@@ -1,6 +1,6 @@
 {
-  "executedAt": "2026-10-20T23:51:40.071Z",
-  "environment": "MongoDB in-memory server + bucket adapter; same API handler as deployment",
+  "executedAt": "2026-10-21T21:39:19.596Z",
+  "environment": "MongoDB temporary server + MongoDB image storage; same API handler as deployment",
   "results": [
     {
       "historia": "HU-08, HU-11, HU-19",

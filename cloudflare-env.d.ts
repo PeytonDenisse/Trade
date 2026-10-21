@@ -4,5 +4,8 @@ declare namespace Cloudflare {
     BUCKET?: R2Bucket;
     MONGODB_URI?: string;
     MONGODB_DB?: string;
+    MONGODB_FILES?: string;
+    DEMO_ENABLED?: string;
+    DEMO_ACCESS_CODE?: string;
   }
 }
