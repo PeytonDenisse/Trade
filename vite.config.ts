@@ -1,3 +1,4 @@
+import path from "node:path";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
@@ -51,7 +52,19 @@ export default defineConfig(async ({ command }) => {
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
+  // The MongoDB driver's URL parser (tr46) requires "punycode/", which the Workers
+  // bundle treats as a missing Node built-in. Point it at the npm package, both in
+  // regular transforms and in the dependency pre-bundler.
+  const punycode = {
+    name: "punycode-npm",
+    enforce: "pre" as const,
+    resolveId: (id: string) => (id === "punycode/" ? path.resolve("node_modules/punycode/punycode.js") : null),
+  };
+  const optimizeDeps = { rolldownOptions: { plugins: [punycode] } };
+
   return {
+    optimizeDeps,
+    environments: { rsc: { optimizeDeps }, ssr: { optimizeDeps } },
     server: {
       ...(managedLinux
         ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] }
@@ -61,6 +74,7 @@ export default defineConfig(async ({ command }) => {
         : {}),
     },
     plugins: [
+      punycode,
       vinext(),
       sites({ mockAuth: !managedLinux }),
       connectorPreview(),
