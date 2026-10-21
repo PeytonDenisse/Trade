@@ -8,21 +8,40 @@
 /* Trade visual system — design/ESPECIFICACION.md and design/mockups/01–02. */
 :root {
   --ink: #1d1b19;
-  --green: #b94f34;
-  --lime: #f4e9de;
+  --action: #b94f34;
+  --action-hover: #a8422b;
+  --green: var(--action);
+  --sand: #f4e9de;
+  --lime: var(--sand);
   --muted: #6c625c;
   --border: #e8ded5;
   --paper: #fbf7f2;
+  --surface: #ffffff;
   --accent: #d96647;
   --success: #2d6a4f;
+  --danger: #b5463a;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
 }
+body { font-size: 16px; color: var(--ink); background: var(--paper); text-rendering: optimizeLegibility; }
+button { min-height: 44px; }
 button, a { transition: background-color .18s, border-color .18s, box-shadow .18s; }
 button:disabled { cursor: not-allowed; }
 button:focus-visible, a:focus-visible, input:focus-visible,
 select:focus-visible, textarea:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 3px solid var(--action);
   outline-offset: 3px;
 }
+.skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 12px 16px; border-radius: 10px; color: white; background: var(--action); transform: translateY(-160%); }
+.skip-link:focus { transform: translateY(0); }
+#main-content { scroll-margin-top: 100px; }
+#main-content:focus { outline: none; }
 aside, header { background: var(--paper); }
 .brand { letter-spacing: -1.5px; }
 .brandmark {
@@ -51,13 +70,13 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .hero h1 em { color: var(--green); }
 .hero-copy, .hero-foot { color: var(--muted); }
 .primary {
-  background: var(--green);
+  background: var(--action);
   border-radius: 999px;
   min-height: 44px;
   padding-inline: 22px;
   box-shadow: 0 4px 12px #b94f3418;
 }
-.primary:hover { background: #a8422b; box-shadow: 0 5px 16px #b94f3428; }
+.primary:hover { background: var(--action-hover); box-shadow: 0 5px 16px #b94f3428; }
 .art-circle { background: #f0d5bf; border-color: #e6c1a6; }
 .roof { border-bottom-color: var(--accent); filter: drop-shadow(0 5px 0 #b94f34); }
 .wall { background: #fffaf4; box-shadow: 12px 10px 0 #e3cebb; }
@@ -80,15 +99,19 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .card-footer button { color: var(--green); min-height: 44px; }
 .secondary { border-radius: 999px; min-height: 44px; }
 .steps b, .guide-step > b { color: var(--green); }
-.panel { border-radius: 16px; box-shadow: 0 4px 16px #6c453006; }
-.field input, .field select, .field textarea { background: #fffcf8; border-color: var(--border); border-radius: 10px; min-height: 44px; }
+.panel { background: var(--surface); border-radius: 16px; box-shadow: 0 4px 16px #6c453006; }
+.field { gap: var(--space-2); font-size: 14px; }
+.field input, .field select, .field textarea { background: #fffcf8; border-color: var(--border); border-radius: 10px; min-height: 44px; font-size: 16px; }
+.field input::placeholder, .field textarea::placeholder { color: #786b63; }
 .field input:hover, .field select:hover, .field textarea:hover { border-color: #bda99a; }
-.error { background: #f7e4df; color: #b5463a; border-radius: 12px; }
-.notice { background: #e3f0e8; color: var(--success); border-radius: 12px; }
-.upload { border-color: #cbb5a5; border-radius: 12px; }
-.empty { border-color: #dac8b8; color: var(--muted); border-radius: 16px; }
+.error { background: #f7e4df; color: var(--danger); border-radius: 12px; border: 1px solid #e8b9ae; }
+.notice { background: #e3f0e8; color: var(--success); border-radius: 12px; border: 1px solid #b9d8c5; }
+.upload { border-color: #cbb5a5; border-radius: 12px; background: #fffcf8; min-height: 80px; }
+.upload:hover, .upload:focus-within { border-color: var(--action); }
+.upload input { min-height: 44px; }
+.empty { border-color: #dac8b8; color: var(--muted); border-radius: 16px; font-size: 14px; }
 .request-icon { background: var(--lime); color: var(--green); }
-.status { background: #e3f0e8; color: var(--success); border-radius: 999px; }
+.status { background: #e3f0e8; color: var(--success); border-radius: 999px; font-weight: 700; }
 .progress span { background: var(--lime); color: var(--muted); }
 .progress .done { background: #e3f0e8; color: var(--success); }
 .image-placeholder { background: var(--paper); border-color: #dac8b8; color: var(--muted); }

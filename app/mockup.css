@@ -1,9 +1,10 @@
 /* Layout based on the approved desktop/mobile screens in design/mockups. */
-.public-shell { display: block; font-size: 16px; }
+.public-shell { display: block; min-width: 0; font-size: 16px; }
 .public-shell .main { margin: 0; }
-.public-shell main { max-width: 1240px; padding: 22px 32px 72px; min-height: 65vh; }
-.public-shell h1 { font-weight: 800; }
+.public-shell main { width: 100%; max-width: 1240px; min-width: 0; padding: 22px 32px 72px; min-height: 65vh; }
+.public-shell h1 { font-size: clamp(34px, 3.2vw, 48px); line-height: 1.16; letter-spacing: -.035em; font-weight: 800; }
 .public-shell h2 { font-size: 32px; line-height: 1.25; font-weight: 800; letter-spacing: -1.1px; }
+.public-shell h3 { line-height: 1.4; }
 .public-shell .muted { font-size: 14px; }
 .public-shell .primary { font-size: 14px; padding: 13px 24px; }
 .public-shell .secondary { font-size: 13px; padding: 10px 20px; color: var(--ink); border-color: #8f8176; }
@@ -11,7 +12,7 @@
 .public-shell .site-header { display: block; position: sticky; top: 0; z-index: 20; height: auto; padding: 0; border-bottom: 1px solid var(--border); color: var(--ink); background: #fbf7f2f5; backdrop-filter: blur(12px); }
 .site-header-inner { max-width: 1240px; min-height: 88px; margin: auto; padding: 15px 32px; display: flex; gap: 28px; align-items: center; }
 .site-header .brand { font-size: 31px; flex-shrink: 0; }
-.site-header .site-navigation { display: flex; flex: 1; justify-content: center; gap: 8px; overflow-x: auto; }
+.site-header .site-navigation { display: flex; flex: 1; min-width: 0; justify-content: center; gap: 8px; margin: 0; }
 .site-navigation button { color: var(--muted); font-size: 13px; white-space: nowrap; padding: 12px 9px; border-radius: 0; border-bottom: 2px solid transparent; }
 .site-navigation button.active { background: none; border-bottom-color: var(--accent); color: var(--ink); }
 .site-navigation button:hover { background: transparent; color: var(--green); }
@@ -124,12 +125,12 @@
   .professional-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .trade-grid { gap: 16px; }
 }
-@media (max-width: 840px) {
+@media (max-width: 1120px) {
   .public-shell main { padding: 18px 20px 48px; }
   .site-header-inner { min-height: 74px; padding: 12px 20px; justify-content: space-between; }
   .site-account { margin-left: auto; gap: 4px; }
   .menu-toggle { display: inline-flex; }
-  .site-header .site-navigation { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--paper); border-bottom: 1px solid var(--border); padding: 16px 20px; max-height: calc(100dvh - 80px); overflow-y: auto; }
+  .site-header .site-navigation { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--paper); border-bottom: 1px solid var(--border); box-shadow: 0 18px 28px #1d1b191a; padding: 16px 20px; max-height: calc(100dvh - 80px); overflow-x: hidden; overflow-y: auto; }
   .site-header .site-navigation.is-open { display: flex; flex-direction: column; }
   .site-navigation button { width: 100%; min-height: 44px; justify-content: flex-start; gap: 12px; border-radius: 8px; border-bottom: 0; font-size: 14px; padding: 12px; }
   .site-navigation button.active { background: var(--lime); }
