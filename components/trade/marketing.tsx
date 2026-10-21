@@ -4,10 +4,10 @@ import { designImages, providerImage, tradeImage } from '../../lib/design-images
 import { RemoteImage } from './remote-image';
 
 export function Hero({ onExplore }: { onExplore: () => void }) {
-  return <section className="landing-hero">
+  return <section className="landing-hero hero-highlight">
     <div className="hero-content">
-      <p className="eyebrow">TU HOGAR, EN BUENAS MANOS</p>
-      <h1>Encuentra a la<br className="desktop"/> persona indicada para <em>tu próximo proyecto.</em></h1>
+      <p className="eyebrow hero-label">UN NUEVO COMIENZO PARA TU HOGAR</p>
+      <h1>Tu hogar tiene planes.<br/><em>Hagámoslos realidad.</em></h1>
       <p>Compara profesionales de confianza, revisa su experiencia y recibe cotizaciones para hacer realidad tus proyectos en casa.</p>
       <button className="primary" onClick={onExplore}>Explorar profesionales <ArrowRight size={19}/></button>
       <div className="hero-assurance"><ShieldCheck size={18}/> Perfiles revisados · Cotizaciones claras</div>
