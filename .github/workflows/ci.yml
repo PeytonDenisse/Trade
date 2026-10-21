@@ -1,4 +1,4 @@
-name: Trade - Validacion
+name: Trade - CI/CD
 on:
   push:
     branches: [main]
@@ -8,10 +8,11 @@ permissions:
   contents: read
 concurrency:
   group: trade-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -28,10 +29,51 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Prepare public Cloudflare build without images
+        run: node scripts/prepare-cloudflare.mjs --without-images
       - uses: actions/upload-artifact@v4
         with:
-          name: trade-tests
-          path: |
-            docs/test-results.json
-            dist
+          name: trade-build
+          path: dist/
           if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trade-tests
+          path: docs/test-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://trade.trade-demo-eexxttrraa.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: trade-build
+          path: dist/
+      - name: Deploy verified build to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 7c2c9641382217699ab59377c21a991d
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Add the CLOUDFLARE_API_TOKEN repository secret. See docs/ci-cd.md."
+            exit 1
+          fi
+          node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js deploy --config dist/server/wrangler.public.json
+      - name: Check live page and MongoDB API
+        run: node scripts/check-deployment.mjs

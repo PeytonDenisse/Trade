@@ -55,9 +55,9 @@ Las ilustraciones de ejemplo están etiquetadas como ficticias. Para evaluar car
 `pnpm test` ejecuta validaciones unitarias y un recorrido integrado con SQLite real en memoria y un adaptador de archivos. Comprueba las 20 historias, rechazo de accesos indebidos, documentos privados, origen de peticiones y estados. Genera `docs/test-results.json`. Estas pruebas no equivalen a una ejecución de todos los formularios en un navegador real ni a una prueba de carga.
 
 ## CI/CD y publicación
-`.github/workflows/ci.yml` instala dependencias, revisa tipos, ejecuta pruebas y construye en pushes a main y pull requests. Está activo en el repositorio privado https://github.com/PeytonDenisse/Trade. La primera ejecución https://github.com/PeytonDenisse/Trade/actions/runs/39340715394 completó correctamente tipos, pruebas y compilación.
+`.github/workflows/ci.yml` instala dependencias, revisa tipos, ejecuta pruebas con MongoDB temporal y compila en pushes a `main` y pull requests. Después de validar `main`, publica el mismo artefacto en Cloudflare Workers y comprueba la página y la consulta a Atlas por HTTPS. Los pull requests solo validan.
 
-La entrega actual usa el repositorio del alojamiento Sites: validación local, sincronización del código, construcción, aplicación de migraciones y publicación de una versión. Esto permite un deploy reproducible dentro del entorno, pero no constituye un pipeline de CD de GitHub activado. El código ya está en GitHub. Falta conectar una estrategia de despliegue compatible y configurar sus credenciales mediante el proveedor elegido. No colocar tokens en YAML ni en el código.
+La configuración y el paso de activación con el secreto `CLOUDFLARE_API_TOKEN` están en [docs/ci-cd.md](docs/ci-cd.md). Atlas conserva su conexión secreta en Cloudflare. Esta publicación no utiliza D1 ni R2; las imágenes quedan deshabilitadas. Nunca colocar tokens en YAML ni en el código.
 
 ## Límites conocidos
 - POC académica privada. No es un producto listo para operar con usuarios reales.
