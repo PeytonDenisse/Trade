@@ -3,7 +3,7 @@ import {seedCatalog} from './catalog-seed';
 import {demo} from './demo';
 import {required,trade,price,stars,date,passwordHash} from './rules';
 import {withDb,type DbEnv} from '../db/mongo';
-type Env=DbEnv&{BUCKET:any,DEMO_ENABLED?:string};
+type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string};
 const json=(data:any,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 const id=()=>crypto.randomUUID();
 // Replaces the SQL JOIN on users: copies the user's name from `field` into `as`.
@@ -28,6 +28,7 @@ async function route(req:Request,env:Env,db:Db){
  try{
  if(req.method!=='GET') {const origin=req.headers.get('origin');if(origin&&origin!==url.origin)fail('Origen no permitido.',403);if(Number(req.headers.get('content-length')||0)>5500000)fail('El archivo supera el límite.',413)}
  if(req.method==='GET'){
+ if(path.startsWith('files/')&&!env.BUCKET)fail('Las imágenes no están disponibles en esta versión.',503);
  if(path==='me')return json({user,application:user?await one('providers',{id:user.id}):null});
  if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...(t?{trade:t}:{})}},{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:'$_r.stars'}}},...withName('id','name'),{$project:{document:0,_r:0}}]))}
  if(path.startsWith('providers/')){const pid=path.split('/')[1];const [p]=await agg('providers',[{$match:{id:pid,status:'Aprobada'}},...withName('id','name'),{$project:{document:0}}]);if(!p)fail('Proveedor no encontrado.',404);const done=(await all('requests',{provider:pid,status:'Completado'},{},{id:1})).map(r=>r.id);return json({...p,works:await all('files',{request:{$in:done},kind:{$in:['before','after']}},{},{id:1,kind:1,request:1}),reviews:await all('reviews',{provider:pid},{},{stars:1,comment:1})})}
@@ -39,6 +40,7 @@ async function route(req:Request,env:Env,db:Db){
  }
  if(req.method!=='POST')return json({error:'Método no permitido.'},405);
  if(path==='upload'){
+ if(!env.BUCKET)fail('La carga de imágenes está deshabilitada temporalmente.',503);
  auth();const form=await req.formData(),file=form.get('file') as File,kind=String(form.get('kind')),rid=String(form.get('request')||'');if(!file||typeof file.arrayBuffer!=='function'||file.size>5*1024*1024||file.size===0)fail('Adjunta una imagen de hasta 5 MB.');if(!['photo','document','problem','before','after'].includes(kind))fail('Tipo de imagen inválido.');if(rid){const r=await own(rid);if(kind==='problem'){if(r.owner!==user.id||r.status!=='Activa')fail('Solo puedes añadir fotografías a tus solicitudes activas.',403)}else if(['before','after'].includes(kind)){if(r.provider!==user.id||r.status!=='Asignada')fail('Solo el proveedor asignado puede registrar evidencia durante el trabajo.',403)}else fail('Tipo de archivo no permitido.')}else if(!['photo','document'].includes(kind))fail('Selecciona un servicio.');
  const bytes=new Uint8Array(await file.arrayBuffer());const png=bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71&&bytes[4]===13&&bytes[5]===10&&bytes[6]===26&&bytes[7]===10;const jpg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255;const webp=String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP';const mime=png?'image/png':jpg?'image/jpeg':webp?'image/webp':'';if(!mime||mime!==file.type)fail('Usa una imagen PNG, JPG o WebP válida.');const fid=id();await env.BUCKET.put(fid,bytes,{httpMetadata:{contentType:mime}});await c('files').insertOne({id:fid,owner:user.id,request:rid||null,kind,mime});return json({id:fid},201);
  }
