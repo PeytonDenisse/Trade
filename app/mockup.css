@@ -26,6 +26,8 @@
 .site-context .demo { margin-left: auto; }
 .text-link { color: var(--green); font-size: 12px; padding: 4px; }
 .landing-hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 34px 0 64px; }
+.landing-hero.hero-highlight { background: #f4e9de; border: 1px solid #e8d4c2; border-radius: 24px; padding: 36px 32px; margin: 22px 0 40px; }
+.hero-content .hero-label { display: inline-flex; background: var(--green); color: white; border-radius: 999px; padding: 8px 12px; font-size: 10px; letter-spacing: 1px; margin: 0; }
 .hero-content h1 { font-size: clamp(36px, 4.4vw, 58px); line-height: 1.1; letter-spacing: -2.3px; margin: 20px 0 24px; }
 .hero-content h1 em { font-style: normal; color: var(--green); }
 .hero-content > p:not(.eyebrow) { max-width: 445px; font-size: 16px; line-height: 1.6; color: var(--muted); margin-bottom: 24px; }
@@ -156,6 +158,7 @@
   .public-shell .site-footer { padding-inline: 20px; gap: 24px; }
 }
 @media (max-width: 560px) {
+  .landing-hero.hero-highlight { padding: 24px 18px; margin: 12px 0 28px; border-radius: 18px; }
   .site-header .brand { font-size: 27px; }
   .site-account > .secondary { font-size: 11px; padding: 8px 12px; }
   .public-shell h2 { font-size: 26px; }
