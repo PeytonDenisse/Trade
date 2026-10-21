@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Plus,Wrench,MapPin,Check,LogOut,Briefcase,ClipboardList,UserRound,Camera,Star,ChevronLeft} from 'lucide-react';
 import {trades} from '../lib/rules';
 import {Hero,PopularTrades,ProfessionalCard,HowItWorks} from '../components/trade/marketing';
@@ -13,29 +13,49 @@ function Form({children,onSubmit,label='Guardar'}:any){const [busy,setBusy]=useS
 function Upload({kind,request,onDone,label}:any){const [busy,setBusy]=useState(false),[error,setError]=useState('');return <label className="upload"><Camera size={20}/><span>{busy?'Subiendo…':label}</span><input aria-label={label} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={async e=>{const f=e.target.files?.[0];if(!f)return;setBusy(true);setError('');try{const d=new FormData();d.set('file',f);d.set('kind',kind);if(request)d.set('request',request);const r=await fetch('/api/upload',{method:'POST',body:d});const j:any=await r.json();if(!r.ok)throw new Error(j.error);await onDone(j.id)}catch(e:any){setError(e.message)}finally{setBusy(false)}}}/>{error&&<span className="error" role="alert">{error}</span>}</label>}
 export default function Home(){
 const [menuOpen,setMenuOpen]=useState(false);
+const menuToggle=useRef<HTMLButtonElement>(null);
+const navigation=useRef<HTMLElement>(null);
+useEffect(()=>{
+  if(!menuOpen)return;
+  const firstLink=navigation.current?.querySelector('button');
+  firstLink?.focus();
+  const closeOnEscape=(event:KeyboardEvent)=>{
+    if(event.key==='Escape'){
+      setMenuOpen(false);
+      menuToggle.current?.focus();
+    }
+  };
+  window.addEventListener('keydown',closeOnEscape);
+  return()=>window.removeEventListener('keydown',closeOnEscape);
+},[menuOpen]);
 function focusCatalog(){const catalog=window.document.getElementById('catalogo');catalog?.scrollIntoView({block:'start'});catalog?.focus({preventScroll:true})}
 function selectTrade(value:string){setFilter(value);go('explore');window.requestAnimationFrame(focusCatalog)}
 const [user,setUser]=useState<any>(null),[application,setApplication]=useState<any>(null),[page,setPage]=useState('explore'),[providers,setProviders]=useState<any[]>([]),[filter,setFilter]=useState(''),[items,setItems]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[profile,setProfile]=useState<any>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[photo,setPhoto]=useState(''),[document,setDocument]=useState('');
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application)}
 async function load(){setLoading(true);setError('');try{if(page==='explore')setProviders(await api('providers'+(filter?'?trade='+encodeURIComponent(filter):'')));if(['mine','available','assigned'].includes(page))setItems(await api('requests?scope='+page));if(page==='admin')setItems(await api('applications'));}catch(e:any){setError(e.message)}finally{setLoading(false)}}
 useEffect(()=>{me().catch(e=>setError(e.message))},[]);useEffect(()=>{load()},[page,filter]);
-function go(p:string){setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setError('');setNotice('')}
+function go(p:string){
+  const wasMobileMenuOpen=menuOpen;
+  setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setError('');setNotice('');
+  if(wasMobileMenuOpen)window.requestAnimationFrame(()=>window.document.getElementById('main-content')?.focus({preventScroll:true}));
+}
 async function act(fn:()=>Promise<any>){setError('');try{await fn()}catch(e:any){setError(e.message)}}
 async function detail(id:string){setSelected(await api('requests/'+id))}
 async function change(path:string,data:any){await api(path,data);await detail(selected.id);setNotice('Cambio guardado.');await load()}
 const nav=[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck],['demo','Recorrido de demo',Briefcase],['mine','Mis solicitudes',ClipboardList],...(application?.status==='Aprobada'?[['available','Oportunidades',Briefcase],['assigned','Mis trabajos',Wrench]]:[]),...(user?.role==='admin'?[['admin','Revisar proveedores',ShieldCheck]]:[])] as any[];
 return <div className="shell public-shell">
+<a className="skip-link" href="#main-content">Ir al contenido</a>
 <header className="site-header"><div className="site-header-inner">
   <a className="brand" href="/" aria-label="Trade inicio"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a>
-  <nav id="site-navigation" aria-label="Navegación principal" className={menuOpen?'site-navigation is-open':'site-navigation'}>
+  <nav ref={navigation} id="site-navigation" aria-label="Navegación principal" className={menuOpen?'site-navigation is-open':'site-navigation'}>
     {nav.map(([key,label,Icon])=><button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>go(!['explore','guide','demo'].includes(key)&&!user?'login':key)}><Icon size={17}/>{label}</button>)}
     {user&&<button className="mobile-offer" onClick={()=>go('apply')}>Ofrecer mis servicios</button>}
   </nav>
   <div className="site-account">{user?<><span className="account-name"><span className="avatar">{user.name[0]}</span><b>{user.name}</b></span><button className="icon-button" aria-label="Cerrar sesión" onClick={()=>act(async()=>{await api('logout',{});setUser(null);setApplication(null);go('explore')})}><LogOut size={19}/></button></>:<button className="secondary" onClick={()=>go('login')}>Iniciar sesión</button>}
-    <button className="menu-toggle icon-button" aria-label={menuOpen?'Cerrar menú':'Abrir menú'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X/>:<Menu/>}</button>
+    <button ref={menuToggle} className="menu-toggle icon-button" aria-label={menuOpen?'Cerrar menú':'Abrir menú'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X/>:<Menu/>}</button>
   </div>
 </div></header>
-<div className="main"><main>
+<div className="main"><main id="main-content" tabIndex={-1}>
 <div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<button className="text-link" onClick={()=>go('apply')}>Ofrecer mis servicios <ArrowUpRight size={15}/></button>}</div>
 {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="notice" role="status"><Check size={18}/>{notice}</div>}
 {page==='explore'&&!profile&&<>
