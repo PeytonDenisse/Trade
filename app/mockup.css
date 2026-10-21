@@ -302,3 +302,77 @@
   .guide-process-copy p { font-size: 13px; margin: 0; }
   .step-number { width: 34px; height: 34px; font-size: 16px; }
 }
+
+/* Access and request creation: design/mockups/05 and 06. */
+.access-page, .request-create-page { padding: 18px 0 28px; }
+.access-intro, .request-create-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 38px; align-items: center; padding: 12px 0 42px; }
+.access-intro h1, .request-create-intro h1 { max-width: 560px; font-size: clamp(34px, 4.1vw, 54px); line-height: 1.11; }
+.access-intro h1 em, .request-create-intro h1 em { color: var(--green); font-style: normal; }
+.access-intro > div > p:not(.eyebrow), .request-create-intro > div > p:not(.eyebrow) { max-width: 520px; color: var(--muted); font-size: 16px; }
+.access-intro .secondary { margin-top: 12px; }
+.access-intro figure, .request-create-intro figure { margin: 0; }
+.access-intro img, .request-create-intro img { display: block; width: 100%; height: 300px; object-fit: cover; border-radius: 18px; }
+.access-intro figcaption, .request-create-intro figcaption { color: var(--muted); font-size: 11px; text-align: right; margin-top: 7px; }
+.access-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: start; }
+.access-card, .request-form-card { min-width: 0; background: #fffaf6; border: 1px solid var(--border); box-shadow: 0 8px 26px #6c453009; border-radius: 18px; padding: 28px; }
+.access-card h2, .request-form-card h2 { font-size: 27px; margin: 0 0 5px; }
+.access-card > p, .request-form-heading p { color: var(--muted); font-size: 14px; margin: 0 0 22px; }
+.access-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; margin: 0 0 17px; }
+.access-field label { font-weight: 700; font-size: 14px; }
+.access-field input, .access-field select, .access-field textarea { width: 100%; min-height: 48px; border: 1px solid #bdaea2; border-radius: 10px; padding: 11px 13px; color: var(--ink); background: white; font-size: 16px; }
+.access-field textarea { min-height: 124px; resize: vertical; line-height: 1.5; }
+.access-field input:hover, .access-field select:hover, .access-field textarea:hover { border-color: var(--action); }
+.access-field input[aria-invalid="true"], .access-field select[aria-invalid="true"], .access-field textarea[aria-invalid="true"] { border-color: var(--danger); background: #fff8f6; }
+.access-field small { color: var(--muted); font-size: 12px; }
+.field-error { margin: 1px 0 0; color: var(--danger); font-size: 12px; line-height: 1.45; }
+.password-control { position: relative; }
+.password-control input { padding-right: 55px; }
+.password-toggle { position: absolute; right: 2px; top: 2px; width: 44px; height: 44px; color: var(--muted); border-radius: 9px; }
+.password-toggle:hover { background: var(--sand); }
+.access-submit, .request-submit { width: 100%; min-height: 48px; border-radius: 999px; font-size: 15px; }
+.request-create-intro { padding-bottom: 28px; }
+.request-form-card { padding: 30px; }
+.request-form-heading { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 24px; }
+.request-form-heading > span { display: grid; place-items: center; flex: none; width: 48px; height: 48px; border-radius: 14px; background: var(--sand); color: var(--green); }
+.request-form-heading p { margin-bottom: 0; }
+.request-form-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.75fr) minmax(0,1fr); align-items: start; gap: 20px; }
+.request-description textarea { display: block; }
+.field-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.field-meta small:last-child { white-space: nowrap; }
+.date-control { position: relative; }
+.date-control input { padding-right: 34px; }
+.date-control > svg { pointer-events: none; position: absolute; right: 38px; top: 14px; color: var(--muted); }
+.request-submit { margin-top: 8px; }
+.request-after-note { display: flex; align-items: center; gap: 9px; margin: 18px 0; color: var(--muted); font-size: 13px; }
+.request-after-note svg { color: var(--success); flex: none; }
+.published-notice { display: flex; gap: 18px; padding: 25px; background: #f1f8f1; border: 1px solid #bad8c4; border-radius: 18px; margin: 0 0 22px; }
+.published-icon { display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 50%; color: var(--success); background: #d8edda; }
+.published-body { flex: 1; min-width: 0; }
+.published-title { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.published-title h2 { margin: 0; font-size: 25px; }
+.published-body > p { margin: 8px 0 13px; color: var(--muted); font-size: 14px; }
+.published-body > small { display: block; font-size: 12px; }
+.published-body .upload-field { max-width: 590px; }
+.published-body .upload { min-height: 76px; margin: 10px 0 4px; }
+.published-body .text-button { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; font-size: 13px; font-weight: 700; }
+.upload-field .field-error { margin: -8px 0 14px; }
+@media (max-width: 760px) {
+  .access-intro, .request-create-intro { grid-template-columns: 1fr; gap: 18px; padding-bottom: 25px; }
+  .access-intro img, .request-create-intro img { height: 210px; }
+  .access-grid, .request-form-grid { grid-template-columns: 1fr; gap: 14px; }
+  .access-card, .request-form-card { padding: 22px; }
+  .request-form-heading { margin-bottom: 18px; }
+  .request-form-heading h2 { font-size: 23px; }
+  .request-form-heading > span { width: 40px; height: 40px; }
+  .published-notice { padding: 18px; gap: 12px; }
+  .published-icon { width: 40px; height: 40px; }
+  .published-title h2 { font-size: 21px; }
+}
+@media (max-width: 480px) {
+  .access-page, .request-create-page { padding-top: 4px; }
+  .access-intro h1, .request-create-intro h1 { font-size: 34px; }
+  .access-intro img { height: 170px; }
+  .request-create-intro img { height: 185px; }
+  .access-card h2 { font-size: 24px; }
+  .published-notice { flex-direction: column; }
+}
