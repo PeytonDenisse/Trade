@@ -1,17 +1,14 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Wrench,Check,LogOut,Briefcase,ClipboardList,Camera,ChevronLeft} from 'lucide-react';
+import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Wrench,Check,LogOut,Briefcase,ClipboardList,Camera} from 'lucide-react';
 import {trades} from '../lib/rules';
 import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../components/trade/marketing';
 import {ProfilePage} from '../components/trade/profile';
 import {AccessPage,CreateRequestPage,PublishedNotice} from '../components/trade/access-request';
 import {MyRequests,RequestJourney} from '../components/trade/request-journey';
+import {ProviderApplication,ProviderWorkspace} from '../components/trade/provider-workflow';
 import {RemoteImage} from '../components/trade/remote-image';
-const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
 async function api(path:string,data?:any){const r=await fetch('/api/'+path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const d:any=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo completar la operación.');return d}
-function Field({label,name,type='text',...props}:any){return <label className="field">{label}<input name={name} type={type} required {...props}/></label>}
-function TradeSelect({value,onChange}:any){return <label className="field">Oficio<select name="trade" value={value} onChange={onChange} required>{trades.map(t=><option key={t}>{t}</option>)}</select></label>}
-function Form({children,onSubmit,label='Guardar'}:any){const [busy,setBusy]=useState(false),[err,setErr]=useState('');return <form onSubmit={async e=>{e.preventDefault();setBusy(true);setErr('');try{await onSubmit(Object.fromEntries(new FormData(e.currentTarget)))}catch(e:any){setErr(e.message)}finally{setBusy(false)}}}>{children}{err&&<p role="alert" className="error">{err}</p>}<button disabled={busy} className="primary">{busy?'Guardando…':label}<ArrowRight size={17}/></button></form>}
 function Upload({kind,request,onDone,label}:any){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   return <div className="upload-field"><label className="upload"><Camera size={20}/><span>{busy?'Subiendo…':label}</span><input aria-label={label} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={async e=>{
@@ -86,24 +83,22 @@ return <div className="shell public-shell">
 </>}
 {profile&&<ProfilePage provider={profile} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>{if(user)go('create');else{setAuthDestination('create');go('login')}}}/>}
 {['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination);setAuthDestination('explore')}}/>}
-{page==='apply'&&<section className="panel form-panel"><p className="eyebrow">COMPARTE LO QUE SABES HACER</p><h1>Conviértete en proveedor.</h1>{!user?<button className="primary" onClick={()=>{setAuthDestination('apply');go('login')}}>Inicia sesión</button>:application?<div className="empty"><ShieldCheck size={36}/><h2>Solicitud {application.status.toLowerCase()}</h2><p>{application.trade} · {application.zone}</p><p>{application.status==='Pendiente'?'Administración revisará tu información.':'Ya puedes consultar oportunidades de tu oficio.'}</p></div>:<><p className="muted">La revisión se realiza dentro de esta demostración. Utiliza documentos ficticios, sin datos personales reales.</p><Form label="Enviar para revisión" onSubmit={async(d:any)=>{await api('apply',{...d,photo,document});await me();setNotice('Tu solicitud quedó pendiente de revisión.')}}><TradeSelect/><Field label="Experiencia" name="experience" placeholder="Ej. 4 años en instalaciones residenciales" maxLength={500}/><Field label="Zona de trabajo" name="zone" placeholder="Ej. León, Guanajuato" maxLength={200}/><label className="field">Sobre tu trabajo<textarea name="description" required maxLength={2000}/></label><Upload kind="photo" label={photo?'Fotografía cargada ✓':'Cargar fotografía de perfil'} onDone={setPhoto}/><Upload kind="document" label={document?'Documento cargado ✓':'Cargar identificación ficticia (imagen)'} onDone={setDocument}/><small>JPG, PNG o WebP · Máximo 5 MB por imagen.</small></Form></>}</section>}
+{page==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
+  photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
+  documentUpload={<Upload kind="document" label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
+  onLogin={()=>{setAuthDestination('apply');go('login')}}
+  onOpportunities={()=>go('available')}
+  onSubmit={async values=>{await api('apply',{...values,photo,document});await me();setNotice('Tu solicitud quedó Pendiente de revisión.')}}
+/>}
 {page==='create'&&<CreateRequestPage onSubmit={async(values)=>{const r=await api('requests',values);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
 {page==='mine'&&!selected&&<MyRequests items={items} loading={loading} error={error} openingId={openingId} onOpen={id=>act(async()=>{await detail(id);window.scrollTo({top:0})})} onCreate={()=>go('create')}/>}
-{['available','assigned'].includes(page)&&!selected&&<><div className="section-head"><div><p className="eyebrow">CADA PASO, EN UN MISMO LUGAR</p><h1>{page==='available'?'Nuevas oportunidades':'Mis trabajos'}</h1></div></div>{loading?<p role="status">Cargando solicitudes…</p>:items.length?<div className="request-list">{items.map(r=><button className="request-row" key={r.id} onClick={()=>act(()=>detail(r.id))}><span className="request-icon"><Wrench size={23}/></span><div><span className="eyebrow">{r.trade}</span><h3>{r.description}</h3><span className="muted">Fecha solicitada: {r.date}</span></div><span className="status" data-status={r.status}>{r.status}</span><ArrowUpRight size={20}/></button>)}</div>:<div className="empty"><ClipboardList size={35}/><h2>Aún no hay solicitudes aquí.</h2><p>Las solicitudes de tu oficio aparecerán en esta sección.</p></div>}</>}
-{selected&&selected.owner!==user?.id&&<div className="provider-request-detail">
-  <button className="back" onClick={()=>setSelected(null)}><ChevronLeft size={18}/> Volver a solicitudes</button>
-  <section className="panel"><div className="section-head"><span className="eyebrow">{selected.trade}</span><span className="status" data-status={selected.status}>{selected.status}</span></div>
-    <h1 className="service-title">{selected.description}</h1><p className="muted">Fecha solicitada: {selected.date} · Ref. {selected.id.slice(0,8)}</p>
-    <div className="progress">{['Activa','Asignada','Terminado','Completado'].map((status,index)=><span key={status} className={['Activa','Asignada','Terminado','Completado'].indexOf(selected.status)>=index?'done':''}>{index+1}. {status}</span>)}</div>
-    <h3>Fotografías del problema</h3>{!selected.files.some((file:any)=>file.kind==='problem')&&<p className="muted">El cliente no adjuntó fotografías del problema.</p>}
-    <div className="gallery">{selected.files.filter((file:any)=>file.kind==='problem').map((file:any)=><RemoteImage key={file.id} src={'/api/files/'+file.id} alt="Fotografía del problema"/>)}</div>
-  </section>
-  <section className="panel"><h2>Cotizaciones</h2>{!selected.quotes.length&&<p className="muted">Todavía no hay propuestas para mostrar.</p>}
-    {selected.quotes.map((quote:any)=><div className="quote" key={quote.id}><div><h3>{quote.provider_name}</h3><p>{quote.description}</p><span className="status" data-status={quote.status}>{quote.status}</span></div><strong>{money(quote.price)}</strong></div>)}
-    {selected.status==='Activa'&&application?.status==='Aprobada'&&!selected.quotes.length&&<Form label="Enviar cotización" onSubmit={(values:any)=>change('quote',{...values,request:selected.id})}><Field label="Precio total (MXN)" name="price" type="number" min="0.01" max="10000000" step="0.01"/><label className="field">¿Qué incluye?<textarea required name="description" maxLength={2000}/></label></Form>}
-  </section>
-  {selected.provider&&<section className="panel"><h2>El cambio, a la vista.</h2><div className="comparison">{[['before','Antes'],['after','Después']].map(([kind,label])=><div key={kind}><h3>{label}</h3>{selected.files.filter((file:any)=>file.kind===kind).map((file:any)=><RemoteImage key={file.id} src={'/api/files/'+file.id} alt={label+' del trabajo'}/>)}{!selected.files.some((file:any)=>file.kind===kind)&&<div className="image-placeholder"><Camera/>Sin evidencia todavía</div>}{selected.provider===user?.id&&selected.status==='Asignada'&&<Upload kind={kind} request={selected.id} label={'Añadir foto · '+label} onDone={()=>detail(selected.id)}/>}</div>)}</div>{selected.provider===user?.id&&selected.status==='Asignada'&&<button className="primary" onClick={()=>act(()=>change('finish',{request:selected.id}))}>Marcar como terminado <Check size={18}/></button>}</section>}
-</div>}
+{['available','assigned'].includes(page)&&<ProviderWorkspace mode={page as 'available'|'assigned'} trade={application?.trade||''} items={items} selected={selected} loading={loading} error={error} openingId={openingId}
+  onOpen={id=>act(async()=>{await detail(id);window.requestAnimationFrame(()=>window.document.getElementById('provider-detail')?.scrollIntoView({block:'start'}))})}
+  onBack={()=>setSelected(null)}
+  onQuote={(price,description)=>change('quote',{request:selected.id,price,description})}
+  onFinish={()=>change('finish',{request:selected.id})}
+  renderUpload={kind=><Upload kind={kind} request={selected?.id} label={kind==='before'?'Subir foto · Antes':'Subir foto · Después'} onDone={async()=>{await detail(selected.id);setNotice('Fotografía del trabajo añadida.')}}/>}
+/>}
 {selected&&selected.owner===user?.id&&<RequestJourney key={selected.id} request={selected}
   onBack={()=>{setSelected(null);setJustPublishedId('');window.scrollTo({top:0})}}
   onList={()=>{setSelected(null);setJustPublishedId('');window.scrollTo({top:0})}}
