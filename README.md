@@ -22,7 +22,7 @@ pnpm dev
 
 Antes, copia `.env.example` a `.env` con tu `MONGODB_URI` (ver MongoDB Atlas). Usa la dirección impresa por el servidor. `pnpm db:setup` puede repetirse sin duplicar datos. `pnpm test` no usa Atlas: levanta un MongoDB temporal en memoria (la primera vez descarga unos 600 MB). Los archivos privados locales y credenciales no se versionan.
 
-Los colaboradores pueden usar **Recorrido de demo** para cambiar entre cliente, proveedor y administración. Configura `DEMO_ENABLED=true` y un `DEMO_ACCESS_CODE` privado en `.env`; compártelo con el equipo por un canal privado. Introduce ese código en el recorrido antes de elegir un rol. El registro normal conserva su rol de cliente. Las cuentas y los datos de demo son compartidos, por lo que conviene coordinar las pruebas.
+Los colaboradores pueden usar **Recorrido de demo** para entrar directamente como cliente, proveedor o administración. Configura `DEMO_ENABLED=true` en `.env`. El registro normal conserva su rol de cliente. Las cuentas y los datos de demo son compartidos.
 
 ## MongoDB Atlas
 Copia `.env.example` a `.env` y completa `MONGODB_URI` con tu usuario y contraseña. `.env` no se versiona.
@@ -36,11 +36,11 @@ pnpm db:setup --import ruta/a/Tradesqlite.sqlite   # además copia las filas des
 Las colecciones replican las tablas de `db/schema.ts`. La API abre una conexión por petición porque Workers no permite reutilizar sockets entre peticiones; cada petición tarda de 1 a 3 segundos. Para publicar, configura `MONGODB_URI` como secreto en el alojamiento y permite su IP en Atlas Network Access.
 
 ## Demostración del equipo (local y alojada)
-El pipeline genera un código aleatorio por despliegue y lo configura como secreto `DEMO_ACCESS_CODE` del Worker. Todo colaborador con acceso al repositorio privado puede ir a **Actions → última ejecución exitosa de Trade - CI/CD → Artifacts → team-demo-access**, descargar el archivo e introducir el código en **Recorrido de demo** del sitio. El archivo caduca a los 7 días; vuelve a ejecutar el pipeline para renovar el acceso. El código anterior deja de servir cuando se publica uno nuevo (las sesiones ya iniciadas duran hasta 24 horas). Nunca se imprime el código en los logs ni se versiona. GitHub y Trade no comparten sesión: el acceso del equipo se acredita mediante ese código. Las cuentas y los datos de demo son compartidos. El pipeline habilita `DEMO_ENABLED=true`; sin el código correcto, una cuenta normal o una cabecera de identidad no conceden roles demo. Para cerrar la demo, configura `DEMO_ENABLED=false` y vuelve a publicar.
+Con `DEMO_ENABLED=true`, abre **Recorrido de demo** y pulsa **Entrar** en el rol que quieras probar. No necesitas código ni descargar archivos de GitHub Actions. Las cuentas y los datos son compartidos. Esta instancia académica permite que cualquier visitante use los tres roles de demo. Para cerrar el recorrido, configura `DEMO_ENABLED=false` y vuelve a publicar.
 
 Sin R2, `MONGODB_FILES=true` guarda archivos en `file_objects`. Conserva el límite de 5 MB y los permisos de lectura. Permite completar aprobación de proveedor y evidencias. Las fotos locales de R2 no se migran automáticamente al sitio alojado.
 
-1. Abre Recorrido de demo, introduce el código del equipo y descarga las cuatro imágenes ficticias.
+1. Abre Recorrido de demo, descarga las cuatro imágenes ficticias.
 2. Entra como proveedor, completa oficio Plomería, experiencia, zona y descripción. Adjunta perfil e identificación ficticia.
 3. Cambia a administración y aprueba la solicitud.
 4. Cambia a cliente y busca Plomería. Consulta el perfil. Crea una solicitud y adjunta una imagen del problema.
@@ -54,7 +54,7 @@ Sin R2, `MONGODB_FILES=true` guarda archivos en `file_objects`. Conserva el lím
 Las ilustraciones de ejemplo están etiquetadas como ficticias. Para evaluar carga de fotografías, también se aceptan PNG, JPG y WebP de hasta 5 MB. No uses documentos personales reales.
 
 ## Pruebas
-`pnpm test` ejecuta validaciones unitarias y un recorrido integrado con MongoDB temporal, incluyendo la persistencia binaria de imágenes y el acceso de demo por código. Comprueba las 20 historias, rechazo de accesos indebidos, documentos privados, origen de peticiones y estados. Genera `docs/test-results.json`. Estas pruebas no equivalen a una ejecución de todos los formularios en un navegador real ni a una prueba de carga.
+`pnpm test` ejecuta validaciones unitarias y un recorrido integrado con MongoDB temporal, incluyendo la persistencia binaria de imágenes y el acceso directo a los tres roles de demo. Comprueba las 20 historias, rechazo de accesos indebidos, documentos privados, origen de peticiones y estados. Genera `docs/test-results.json`. Estas pruebas no equivalen a una ejecución de todos los formularios en un navegador real ni a una prueba de carga.
 
 ## CI/CD y publicación
 `.github/workflows/ci.yml` instala dependencias, revisa tipos, ejecuta pruebas con MongoDB temporal y compila en pushes a `main` y pull requests. Después de validar `main`, publica el mismo artefacto en Cloudflare Workers y comprueba la página y la consulta a Atlas por HTTPS. Los pull requests solo validan.

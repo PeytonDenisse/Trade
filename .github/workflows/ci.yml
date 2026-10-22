@@ -74,17 +74,6 @@ jobs:
             echo "::error::Add the CLOUDFLARE_API_TOKEN repository secret. See docs/ci-cd.md."
             exit 1
           fi
-          mkdir -p .sites-runtime
-          node -e "require('node:fs').writeFileSync('.sites-runtime/team-demo-code.txt', require('node:crypto').randomBytes(24).toString('base64url'))"
-          node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js secret put DEMO_ACCESS_CODE --config dist/server/wrangler.public.json < .sites-runtime/team-demo-code.txt
           node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js deploy --config dist/server/wrangler.public.json
-      - name: Share demo access with repository collaborators
-        uses: actions/upload-artifact@v4
-        with:
-          name: team-demo-access
-          path: .sites-runtime/team-demo-code.txt
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
       - name: Check live page and MongoDB API
-        run: node scripts/check-deployment.mjs https://trade.trade-demo-eexxttrraa.workers.dev .sites-runtime/team-demo-code.txt
+        run: node scripts/check-deployment.mjs https://trade.trade-demo-eexxttrraa.workers.dev

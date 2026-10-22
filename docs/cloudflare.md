@@ -6,7 +6,7 @@ Enlace: https://trade.trade-demo-eexxttrraa.workers.dev
 
 La publicación usa MongoDB Atlas, sin D1 ni R2. `MONGODB_FILES=true` guarda imágenes en `file_objects`, con el mismo límite de 5 MB y los permisos de lectura de la API. El recorrido completo admite carga de perfil, identificación ficticia, problema y evidencias.
 
-El pipeline configura `DEMO_ACCESS_CODE` como secreto del Worker y publica el código en el artefacto privado `team-demo-access` de la ejecución de GitHub Actions. Los colaboradores descargan el artefacto de la última publicación e introducen el código en Recorrido de demo. El código se renueva en cada despliegue y el artefacto caduca a los 7 días. En despliegues manuales, configura el secreto con `wrangler secret put DEMO_ACCESS_CODE`. El registro normal no concede administración. Las identidades y operaciones de demo se comparten entre integrantes.
+Con `DEMO_ENABLED=true`, cualquier visitante puede abrir Recorrido de demo y entrar directamente como cliente, proveedor o administración. No se pide código. El registro normal conserva su rol de cliente. Las cuentas y los datos de demo son compartidos.
 
 Para actualizar la publicación, compila con Node 24 y pnpm, luego ejecuta:
 

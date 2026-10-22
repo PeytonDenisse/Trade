@@ -21,6 +21,6 @@ config.d1_databases = [];
 config.r2_buckets = withoutImages ? [] : [{ binding: 'BUCKET', bucket_name: bucketName }];
 writeFileSync(output, JSON.stringify(config, null, 2) + '\n');
 console.log(`Configuración pública preparada: ${fileURLToPath(output)}`);
-console.log('La demo requiere el secreto DEMO_ACCESS_CODE para el acceso del equipo.');
+console.log('El recorrido académico permite entrar directamente a los tres roles de demo.');
 console.log('Configura MONGODB_URI como secreto de Wrangler antes de usar la aplicación.');
 if (withoutImages) console.log('Publicación sin R2: las imágenes se almacenan en MongoDB.');

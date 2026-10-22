@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import { setTimeout } from 'node:timers/promises';
 
 const base = new URL(process.argv[2] || 'https://trade.trade-demo-eexxttrraa.workers.dev');
@@ -20,11 +19,8 @@ for (let attempt = 1; attempt <= 5; attempt++) {
         else assert.equal(body.user, null, 'Anonymous request must not be authenticated');
       }
     }
-    if(process.argv[3]){
-      const accessCode=readFileSync(process.argv[3],'utf8').trim();
-      const enter=role=>fetch(new URL('/api/demo',base),{method:'POST',headers:{'Content-Type':'application/json',Origin:base.origin},body:JSON.stringify({role,accessCode}),signal:AbortSignal.timeout(15_000)});
-      const denied=await fetch(new URL('/api/demo',base),{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':'untrusted'},body:JSON.stringify({role:'admin',accessCode:'wrong'}),signal:AbortSignal.timeout(15_000)});
-      assert.equal(denied.status,403,'Demo must reject an invalid team code');
+    {
+      const enter=role=>fetch(new URL('/api/demo',base),{method:'POST',headers:{'Content-Type':'application/json',Origin:base.origin},body:JSON.stringify({role}),signal:AbortSignal.timeout(15_000)});
       for(const role of ['cliente','proveedor','admin']){
         const response=await enter(role);
         assert.equal(response.status,200,'Team demo role must be available');
@@ -35,7 +31,7 @@ for (let attempt = 1; attempt <= 5; attempt++) {
         assert.equal((await me.json()).user.id,'demo-'+role);
         if(role==='admin')assert.equal((await fetch(new URL('/api/applications',base),{headers:{Cookie:cookie},signal:AbortSignal.timeout(15_000)})).status,200);
       }
-      console.log('Team demo verified: client, provider, administrator and invalid-code rejection.');
+      console.log('Team demo verified: direct client, provider and administrator access.');
     }
     console.log(`Deployment verified: ${base.origin} (page, session, MongoDB).`);
     break;

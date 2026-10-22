@@ -26,6 +26,6 @@ Si `deploy` falla por el secreto faltante, agrégalo y usa **Re-run failed jobs*
 Referencia: https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/.
 
 ## Acceso del equipo al recorrido completo
-Cada despliegue genera un código de 192 bits, lo carga al secreto `DEMO_ACCESS_CODE` de Cloudflare y lo entrega como artefacto `team-demo-access` (7 días). Los colaboradores del repositorio privado pueden descargarlo en Actions e introducirlo en Recorrido de demo. No se guarda en el código ni se imprime en logs. El token de Cloudflare necesita el permiso de edición de Workers que ya usa el despliegue.
+El despliegue habilita `DEMO_ENABLED=true`: los visitantes pueden entrar directamente a los roles de cliente, proveedor y administración desde Recorrido de demo. No se genera ni se solicita un código de acceso. Las cuentas y datos son ficticios y compartidos.
 
 El Worker habilita `DEMO_ENABLED=true` y `MONGODB_FILES=true` al prepararse con `--without-images` (opción heredada que ahora significa sin R2). Las imágenes se guardan en MongoDB y las 20 historias pueden recorrerse con roles de demo. Solo usa información ficticia; el administrador de demo tiene los permisos de administración de esta POC compartida.

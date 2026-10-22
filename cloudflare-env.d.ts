@@ -6,6 +6,5 @@ declare namespace Cloudflare {
     MONGODB_DB?: string;
     MONGODB_FILES?: string;
     DEMO_ENABLED?: string;
-    DEMO_ACCESS_CODE?: string;
   }
 }
