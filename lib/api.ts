@@ -1,14 +1,32 @@
-import type {Db} from 'mongodb';
+import {Binary,type Db} from 'mongodb';
 import {seedCatalog} from './catalog-seed';
 import {demo} from './demo';
 import {required,trade,price,stars,date,passwordHash} from './rules';
 import {withDb,type DbEnv} from '../db/mongo';
-type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string};
+type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string,MONGODB_FILES?:string};
 const json=(data:any,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 const id=()=>crypto.randomUUID();
 // Replaces the SQL JOIN on users: copies the user's name from `field` into `as`.
 const withName=(field:string,as:string)=>[{$lookup:{from:'users',localField:field,foreignField:'id',as:'_u'}},{$set:{[as]:{$first:'$_u.name'}}},{$project:{_id:0,_u:0}}];
-export function handle(req:Request,env:Env){return withDb(env,db=>route(req,env,db)).catch((e:any)=>json({error:e.message||'No pudimos completar la operación.'},500))}
+// R2 remains preferred. Small demo uploads can use MongoDB on hosts without R2.
+function mongoStorage(db:Db){
+ const objects=db.collection<{_id:string,data:Binary}>('file_objects');
+ return {
+  async put(key:string,data:Uint8Array){
+   await objects.updateOne({_id:key},{$set:{data:new Binary(data)}},{upsert:true});
+  },
+  async get(key:string){
+   const object=await objects.findOne({_id:key});
+   return object?{body:new Uint8Array(object.data.value())}:null;
+  }
+ };
+}
+export function handle(req:Request,env:Env){
+ return withDb(env,db=>{
+  const BUCKET=env.BUCKET||(env.MONGODB_FILES==='true'?mongoStorage(db):undefined);
+  return route(req,{...env,BUCKET},db);
+ }).catch((e:any)=>json({error:e.message||'No pudimos completar la operación.'},500));
+}
 async function route(req:Request,env:Env,db:Db){
  const url=new URL(req.url),path=url.pathname.replace(/^\/api\//,''),c=(name:string)=>db.collection<any>(name);
  const one=(name:string,filter:any,projection:any={})=>c(name).findOne(filter,{projection:{_id:0,...projection}});

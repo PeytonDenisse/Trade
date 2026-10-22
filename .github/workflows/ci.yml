@@ -29,7 +29,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - name: Prepare public Cloudflare build without images
+      - name: Prepare team demo with MongoDB image storage
         run: node scripts/prepare-cloudflare.mjs --without-images
       - uses: actions/upload-artifact@v4
         with:
@@ -76,4 +76,4 @@ jobs:
           fi
           node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js deploy --config dist/server/wrangler.public.json
       - name: Check live page and MongoDB API
-        run: node scripts/check-deployment.mjs
+        run: node scripts/check-deployment.mjs https://trade.trade-demo-eexxttrraa.workers.dev

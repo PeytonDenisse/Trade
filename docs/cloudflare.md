@@ -1,10 +1,12 @@
 # Publicar Trade en Cloudflare Workers
 
-## Publicación actual sin imágenes
+## Publicación actual con imágenes en MongoDB
 
 Enlace: https://trade.trade-demo-eexxttrraa.workers.dev
 
-La publicación usa MongoDB Atlas, sin D1 ni R2. Las rutas de carga y lectura de imágenes devuelven un aviso de indisponibilidad. Los pasos que requieren adjuntos, como el registro de proveedores y las evidencias de trabajos, quedan pendientes de habilitar almacenamiento. No se relajan esos requisitos.
+La publicación usa MongoDB Atlas, sin D1 ni R2. `MONGODB_FILES=true` guarda imágenes en `file_objects`, con el mismo límite de 5 MB y los permisos de lectura de la API. El recorrido completo admite carga de perfil, identificación ficticia, problema y evidencias.
+
+Con `DEMO_ENABLED=true`, cualquier visitante puede abrir Recorrido de demo y entrar directamente como cliente, proveedor o administración. No se pide código. El registro normal conserva su rol de cliente. Las cuentas y los datos de demo son compartidos.
 
 Para actualizar la publicación, compila con Node 24 y pnpm, luego ejecuta:
 

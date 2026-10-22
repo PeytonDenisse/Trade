@@ -22,7 +22,7 @@ pnpm dev
 
 Antes, copia `.env.example` a `.env` con tu `MONGODB_URI` (ver MongoDB Atlas). Usa la dirección impresa por el servidor. `pnpm db:setup` puede repetirse sin duplicar datos. `pnpm test` no usa Atlas: levanta un MongoDB temporal en memoria (la primera vez descarga unos 600 MB). Los archivos privados locales y credenciales no se versionan.
 
-Para crear un administrador local, registra una cuenta ficticia y cambia su `role` a `admin` en la colección `users` (por ejemplo desde Atlas Data Explorer). No existe autoasignación de administración en el registro normal. En la instancia privada alojada, `Recorrido de demo` ofrece tres identidades ficticias y permite realizar la aprobación sin configurar contraseñas de demostración.
+Los colaboradores pueden usar **Recorrido de demo** para entrar directamente como cliente, proveedor o administración. Configura `DEMO_ENABLED=true` en `.env`. El registro normal conserva su rol de cliente. Las cuentas y los datos de demo son compartidos.
 
 ## MongoDB Atlas
 Copia `.env.example` a `.env` y completa `MONGODB_URI` con tu usuario y contraseña. `.env` no se versiona.
@@ -35,10 +35,12 @@ pnpm db:setup --import ruta/a/Tradesqlite.sqlite   # además copia las filas des
 
 Las colecciones replican las tablas de `db/schema.ts`. La API abre una conexión por petición porque Workers no permite reutilizar sockets entre peticiones; cada petición tarda de 1 a 3 segundos. Para publicar, configura `MONGODB_URI` como secreto en el alojamiento y permite su IP en Atlas Network Access.
 
-## Demostración alojada
-Mantener acceso solo para el propietario. Configurar `DEMO_ENABLED=true` con las variables del alojamiento y publicar para aplicarlo. El acceso a roles demo exige identidad autenticada por ChatGPT. Al cambiar la audiencia, desactivar antes la demo y definir administradores explícitos. Los visitantes no tienen acceso anónimo a esta instancia.
+## Demostración del equipo (local y alojada)
+Con `DEMO_ENABLED=true`, abre **Recorrido de demo** y pulsa **Entrar** en el rol que quieras probar. No necesitas código ni descargar archivos de GitHub Actions. Las cuentas y los datos son compartidos. Esta instancia académica permite que cualquier visitante use los tres roles de demo. Para cerrar el recorrido, configura `DEMO_ENABLED=false` y vuelve a publicar.
 
-1. Abre Recorrido de demo. Descarga las cuatro imágenes ficticias.
+Sin R2, `MONGODB_FILES=true` guarda archivos en `file_objects`. Conserva el límite de 5 MB y los permisos de lectura. Permite completar aprobación de proveedor y evidencias. Las fotos locales de R2 no se migran automáticamente al sitio alojado.
+
+1. Abre Recorrido de demo, descarga las cuatro imágenes ficticias.
 2. Entra como proveedor, completa oficio Plomería, experiencia, zona y descripción. Adjunta perfil e identificación ficticia.
 3. Cambia a administración y aprueba la solicitud.
 4. Cambia a cliente y busca Plomería. Consulta el perfil. Crea una solicitud y adjunta una imagen del problema.
@@ -52,12 +54,12 @@ Mantener acceso solo para el propietario. Configurar `DEMO_ENABLED=true` con las
 Las ilustraciones de ejemplo están etiquetadas como ficticias. Para evaluar carga de fotografías, también se aceptan PNG, JPG y WebP de hasta 5 MB. No uses documentos personales reales.
 
 ## Pruebas
-`pnpm test` ejecuta validaciones unitarias y un recorrido integrado con SQLite real en memoria y un adaptador de archivos. Comprueba las 20 historias, rechazo de accesos indebidos, documentos privados, origen de peticiones y estados. Genera `docs/test-results.json`. Estas pruebas no equivalen a una ejecución de todos los formularios en un navegador real ni a una prueba de carga.
+`pnpm test` ejecuta validaciones unitarias y un recorrido integrado con MongoDB temporal, incluyendo la persistencia binaria de imágenes y el acceso directo a los tres roles de demo. Comprueba las 20 historias, rechazo de accesos indebidos, documentos privados, origen de peticiones y estados. Genera `docs/test-results.json`. Estas pruebas no equivalen a una ejecución de todos los formularios en un navegador real ni a una prueba de carga.
 
 ## CI/CD y publicación
 `.github/workflows/ci.yml` instala dependencias, revisa tipos, ejecuta pruebas con MongoDB temporal y compila en pushes a `main` y pull requests. Después de validar `main`, publica el mismo artefacto en Cloudflare Workers y comprueba la página y la consulta a Atlas por HTTPS. Los pull requests solo validan.
 
-La configuración y el paso de activación con el secreto `CLOUDFLARE_API_TOKEN` están en [docs/ci-cd.md](docs/ci-cd.md). Atlas conserva su conexión secreta en Cloudflare. Esta publicación no utiliza D1 ni R2; las imágenes quedan deshabilitadas. Nunca colocar tokens en YAML ni en el código.
+La configuración y el paso de activación con el secreto `CLOUDFLARE_API_TOKEN` están en [docs/ci-cd.md](docs/ci-cd.md). Atlas conserva su conexión secreta en Cloudflare. Esta publicación no utiliza D1 ni R2; las imágenes se guardan en MongoDB. Nunca colocar tokens en YAML ni en el código.
 
 ## Límites conocidos
 - POC académica privada. No es un producto listo para operar con usuarios reales.

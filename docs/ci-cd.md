@@ -24,3 +24,8 @@ Las publicaciones de la misma rama se serializan para evitar despliegues simult�
 Si `deploy` falla por el secreto faltante, agrégalo y usa **Re-run failed jobs** en esa ejecución. Si falla la prueba de conexión a Atlas, revisa la conectividad y las credenciales del Worker en Cloudflare. No ejecutes migraciones D1 para esta versión.
 
 Referencia: https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/.
+
+## Acceso del equipo al recorrido completo
+El despliegue habilita `DEMO_ENABLED=true`: los visitantes pueden entrar directamente a los roles de cliente, proveedor y administración desde Recorrido de demo. No se genera ni se solicita un código de acceso. Las cuentas y datos son ficticios y compartidos.
+
+El Worker habilita `DEMO_ENABLED=true` y `MONGODB_FILES=true` al prepararse con `--without-images` (opción heredada que ahora significa sin R2). Las imágenes se guardan en MongoDB y las 20 historias pueden recorrerse con roles de demo. Solo usa información ficticia; el administrador de demo tiene los permisos de administración de esta POC compartida.
