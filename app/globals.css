@@ -201,3 +201,12 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 /* Home "Así funciona" heading with a link to the full guide. */
 .how-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .how-heading h2 { margin-bottom: 4px; }
+
+/* Provider registration: choose one or more trades. */
+.trade-checks { border: 0; padding: 0; margin: 0; }
+.trade-checks legend { font-weight: 600; margin-bottom: 8px; }
+.trade-checks legend small { font-weight: 400; }
+.trade-check-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.trade-check { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 999px; padding: 8px 14px; background: #fff; cursor: pointer; font-size: 14px; }
+.trade-check input { accent-color: var(--green); }
+.trade-check.checked { border-color: var(--green); background: #f5e3d9; color: var(--green); font-weight: 600; }

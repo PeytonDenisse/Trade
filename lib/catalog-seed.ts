@@ -25,7 +25,7 @@ export async function seedCatalog(env:any,db:Db){
  await add('users','id',{id:uid,name:name+' · Demo',email:`proveedor${i+1}@trade.example`,hash:crypto.randomUUID(),salt:crypto.randomUUID(),role:'proveedor',active:true});
  await add('files','id',{id:photo,owner:uid,request:null,kind:'photo',mime:'image/svg+xml'});
  await add('files','id',{id:document,owner:uid,request:null,kind:'document',mime:'image/svg+xml'});
- await add('providers','id',{id:uid,trade,experience,zone,description:description+' Perfil ficticio para demostración.',photo,document,status:'Aprobada',active:true});
+ await add('providers','id',{id:uid,trade,trades:[trade],experience,zone,description:description+' Perfil ficticio para demostración.',photo,document,status:'Aprobada',active:true});
  await add('requests','id',{id:rid,owner:'catalog-client',trade,description:job+' (ejemplo ficticio)',date:'2026-10-10',status:'Completado',provider:uid,quote:qid,created:'2026-10-08T12:00:00Z'});
  await add('quotes','id',{id:qid,request:rid,provider:uid,price:650+i*125,description:'Servicio y materiales de ejemplo. Sin transacción real.',status:'Aceptada'});
  await add('reviews','request',{request:rid,provider:uid,owner:'catalog-client',stars:rating,comment:'Reseña ficticia de demostración: '+['Explicó el trabajo y dejó todo limpio.','Buena comunicación y atención al detalle.','El resultado quedó como se había acordado.'][i%3]});

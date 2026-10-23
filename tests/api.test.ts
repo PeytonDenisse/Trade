@@ -76,6 +76,13 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(teamEnv,'demo',{role:'owner'},'',400);
  for(const role of ['cliente','proveedor','admin']){const demoSession=await request(teamEnv,'demo',{role});const identity=(await request(teamEnv,'me',undefined,demoSession.cookie)).data;assert.equal(identity.user.id,'demo-'+role);if(role==='admin')await request(teamEnv,'applications',undefined,demoSession.cookie);}
  await request({...env,DEMO_ENABLED:'false'},'demo',{role:'admin'},'',403);
+ // Several trades per provider: catalog, opportunities and own-trade rule use the whole list.
+ const multi=await request(env,'register',credentials('multi'));const multiId=(await request(env,'me',undefined,multi.cookie)).data.user.id;const multiPhoto=(await upload(env,multi.cookie,'photo')).data.id,multiDoc=(await upload(env,multi.cookie,'document')).data.id;
+ await request(env,'apply',{trades:[],experience:'x',zone:'León',description:'x',photo:multiPhoto,document:multiDoc},multi.cookie,400);await request(env,'apply',{trades:['Pintura','Cerrajería','Pintura'],experience:'4 años',zone:'León',description:'Pintura y cerraduras',photo:multiPhoto,document:multiDoc},multi.cookie,201);
+ const multiApp=(await request(env,'me',undefined,multi.cookie)).data.application;assert.deepEqual(multiApp.trades,['Pintura','Cerrajería']);assert.equal(multiApp.trade,'Pintura');await request(env,'approve',{id:multiId},admin.cookie);
+ for(const t of ['Pintura','Cerrajería'])assert.ok((await request(env,'providers?trade='+encodeURIComponent(t))).data.some((p:any)=>p.id===multiId));
+ const lockReq=(await request(env,'requests',{trade:'Cerrajería',description:'Cambiar chapa',date:'2099-01-01'},other.cookie,201)).data.id;assert.ok((await request(env,'requests?scope=available',undefined,multi.cookie)).data.some((r:any)=>r.id===lockReq));await request(env,'quote',{request:lockReq,price:300,description:'Chapa nueva'},multi.cookie,201);
+ await request(env,'requests',{trade:'Cerrajería',description:'Propio',date:'2099-01-01'},multi.cookie,403);ok('Oficios','Un proveedor ofrece varios oficios: catálogo, oportunidades, cotización y regla de oficio propio');
  // Active flag is required: the database rejects users and providers without it.
  await assert.rejects(db.collection('users').insertOne({id:'sin-activo',name:'Sin activo',email:'sin-activo@example.test',hash:'x',salt:'x',role:'cliente'}),(e:any)=>e.code===121);ok('Activo','La base de datos rechaza usuarios sin el campo active');
  // Active flag: deactivated providers disappear and cannot quote; deactivated accounts cannot log in.

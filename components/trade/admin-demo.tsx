@@ -3,10 +3,11 @@ import {useMemo,useState} from 'react';
 import {ArrowDown,ArrowRight,ArrowUp,ArrowUpDown,CheckCircle2,ClipboardList,FileLock2,Search,UserRound,X} from 'lucide-react';
 import {RemoteImage} from './remote-image';
 import {fileSrc} from '../../lib/design-images';
+import {tradesOf} from '../../lib/rules';
 
 type Person={id:string;name:string;email:string;role:string;requests:number;provider_status?:string;active?:boolean;provider_active?:boolean};
 type SetActive=(kind:'account'|'provider',id:string,active:boolean)=>Promise<void>;
-type Application={id:string;name:string;trade:string;zone:string;experience:string;description:string;photo?:string;photo_url?:string;document?:string;status:string};
+type Application={id:string;name:string;trade:string;trades?:string[];zone:string;experience:string;description:string;photo?:string;photo_url?:string;document?:string;status:string};
 
 export function AdminReview({items,people,loading,error,onApprove,onReject,onSetActive}:{items:Application[];people:Person[];loading:boolean;error:string;onApprove:(id:string)=>Promise<void>;onReject:(id:string)=>Promise<void>;onSetActive:SetActive}){
   const [tab,setTab]=useState<'pending'|'people'>('pending');
@@ -62,7 +63,7 @@ function PeopleDirectory({people,applications,loading,error,onApprove,onReject,o
   const [query,setQuery]=useState('');
   const [busyId,setBusyId]=useState('');
   const [message,setMessage]=useState<{ok:boolean;text:string}|null>(null);
-  const rows=useMemo<Row[]>(()=>{const byId=new Map(applications.map(a=>[a.id,a]));return people.map(person=>{const app=byId.get(person.id);const r:Role=person.role==='admin'?'admin':app?'proveedor':'cliente';return {id:person.id,name:person.name,email:person.email,role:r,status:app?.status,trade:app?.trade,zone:app?.zone,requests:person.requests,active:person.active!==false,providerActive:person.provider_active!==false}}).sort((a,b)=>Number(b.status==='Pendiente')-Number(a.status==='Pendiente')||a.name.localeCompare(b.name,'es'))},[people,applications]);
+  const rows=useMemo<Row[]>(()=>{const byId=new Map(applications.map(a=>[a.id,a]));return people.map(person=>{const app=byId.get(person.id);const r:Role=person.role==='admin'?'admin':app?'proveedor':'cliente';return {id:person.id,name:person.name,email:person.email,role:r,status:app?.status,trade:app?tradesOf(app).join(', '):undefined,zone:app?.zone,requests:person.requests,active:person.active!==false,providerActive:person.provider_active!==false}}).sort((a,b)=>Number(b.status==='Pendiente')-Number(a.status==='Pendiente')||a.name.localeCompare(b.name,'es'))},[people,applications]);
   const needle=query.trim().toLowerCase();
   const current=views.find(v=>v.key===view)!;
   const shown=rows.filter(row=>current.match(row)&&(!needle||[row.name,row.email,row.trade,row.zone].some(text=>text?.toLowerCase().includes(needle))));

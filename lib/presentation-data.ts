@@ -33,7 +33,7 @@ export async function preparePresentation(db: Db, assets: Assets) {
     await user(id, `${name} · Demo`, 'proveedor');
     const photo = await file(`${id}-avatar`, id, 'photo', assets.trades[trade] || assets.profile);
     const document = await file(`${id}-document`, id, 'document', assets.document);
-    await save('providers', 'id', { id, trade, experience, zone, description: `${description} Perfil e imágenes ficticios para demostración.`, photo, document, status: 'Aprobada', active: true });
+    await save('providers', 'id', { id, trade, trades: [trade], experience, zone, description: `${description} Perfil e imágenes ficticios para demostración.`, photo, document, status: 'Aprobada', active: true });
     await save('requests', 'id', { id: request, owner: 'catalog-client', trade, description: `${job} · Ejemplo ficticio de catálogo`, date: day(-3), status: 'Completado', provider: id, quote, created: new Date(now.getTime() - 4 * 86400000).toISOString() });
     await save('quotes', 'id', { id: quote, request, provider: id, price: 650 + i * 125, description: `Ejemplo ficticio: diagnóstico, mano de obra y limpieza para ${job.toLowerCase()}. Sin pagos reales.`, status: 'Aceptada' });
     await save('reviews', 'request', { request, provider: id, owner: 'catalog-client', stars, comment: `Reseña ficticia: ${job} realizado según lo acordado. Buena comunicación y área de trabajo limpia.` });
@@ -49,7 +49,7 @@ export async function preparePresentation(db: Db, assets: Assets) {
     if (id === 'presentation-applicant') await user(id, 'Sofía Méndez · Solicitud demo', 'cliente');
     const photo = await file(`${id}-photo`, id, 'photo', assets.trades['Plomería'] || assets.profile);
     const document = await file(`${id}-document`, id, 'document', assets.document);
-    await save('providers', 'id', { id, trade: 'Plomería', experience: '8 años en reparaciones e instalaciones residenciales.', zone: 'León Centro, Guanajuato', description: 'Diagnóstico y reparación de fugas, cambio de conexiones y mantenimiento de lavabos. Perfil ficticio preparado para explicar el flujo de Trade.', photo, document, status: id === 'demo-proveedor' ? 'Aprobada' : 'Pendiente', active: true });
+    await save('providers', 'id', { id, trade: 'Plomería', trades: ['Plomería'], experience: '8 años en reparaciones e instalaciones residenciales.', zone: 'León Centro, Guanajuato', description: 'Diagnóstico y reparación de fugas, cambio de conexiones y mantenimiento de lavabos. Perfil ficticio preparado para explicar el flujo de Trade.', photo, document, status: id === 'demo-proveedor' ? 'Aprobada' : 'Pendiente', active: true });
   }
   const scenarios = [
     ['Activa', 'Fuga debajo del lavabo · Recibir cotizaciones', 'El sifón del lavabo tiene una fuga y moja el mueble. Necesito revisar las conexiones y conocer qué piezas deben reemplazarse.'],

@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Plus,Wrench,UserRound,Check,LogOut,Briefcase,ClipboardList,Camera,ChevronLeft} from 'lucide-react';
-import {trades,isActive} from '../lib/rules';
+import {trades,isActive,tradesOf} from '../lib/rules';
 import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../components/trade/marketing';
 import {ProfilePage} from '../components/trade/profile';
 import {AccessPage,CreateRequestPage,PublishedNotice} from '../components/trade/access-request';
@@ -53,7 +53,7 @@ const [people,setPeople]=useState<any[]>([]);
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
 // The provider's own trade can't be requested; an empty trade means the client chooses.
 function startRequest(trade=''){setRequestTrade(trade);if(user)go('create');else{setAuthDestination('create');go('login')}}
-const ownTrade=application&&application.status!=='Rechazada'?application.trade:'';
+const ownTrades=application&&application.status!=='Rechazada'?tradesOf(application):[];
 // Mi inicio is each role's working page, not a separate page of shortcuts.
 function homeFor(u:any,app:any){if(!u)return 'explore';if(u.role==='admin')return 'admin';if(app?.status==='Aprobada'&&app.active!==false)return 'available';if(app)return 'apply';return 'mine'}
 const view=page==='home'?homeFor(user,application):page;
@@ -103,7 +103,7 @@ return <div className="shell public-shell">
 </section>
 <HowItWorks onExplore={focusCatalog} onGuide={()=>{go('guide');window.scrollTo({top:0})}}/>
 </>}
-{profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrade={ownTrade} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(profile.trade)}/>}
+{profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrades={ownTrades} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(tradesOf(profile).find(t=>!ownTrades.includes(t))||'')}/>}
 {['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
 {view==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
   photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
@@ -112,9 +112,9 @@ return <div className="shell public-shell">
   onOpportunities={()=>go('available')}
   onSubmit={async values=>{await api('apply',{...values,photo,document});await me();setNotice('Tu registro como proveedor quedó pendiente de revisión.')}}
 />}
-{page==='create'&&<CreateRequestPage key={requestTrade} initialTrade={requestTrade===ownTrade?'':requestTrade} excludeTrade={ownTrade} onSubmit={async(values)=>{const r=await api('requests',values);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
+{page==='create'&&<CreateRequestPage key={requestTrade} initialTrade={ownTrades.includes(requestTrade)?'':requestTrade} excludeTrades={ownTrades} onSubmit={async(values)=>{const r=await api('requests',values);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
 {view==='mine'&&!selected&&<MyRequests items={items} loading={loading} error={error} openingId={openingId} onOpen={id=>act(async()=>{await detail(id);window.scrollTo({top:0})})} onCreate={()=>startRequest()}/>}
-{['available','assigned'].includes(view)&&<ProviderWorkspace mode={view as 'available'|'assigned'} trade={application?.trade||''} items={items} selected={selected} loading={loading} error={error} openingId={openingId}
+{['available','assigned'].includes(view)&&<ProviderWorkspace mode={view as 'available'|'assigned'} trade={tradesOf(application).join(', ')} items={items} selected={selected} loading={loading} error={error} openingId={openingId}
   onOpen={id=>act(async()=>{await detail(id);window.requestAnimationFrame(()=>window.document.getElementById('provider-detail')?.scrollIntoView({block:'start'}))})}
   onBack={()=>setSelected(null)}
   onQuote={(price,description)=>change('quote',{request:selected.id,price,description})}

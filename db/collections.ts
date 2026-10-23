@@ -23,8 +23,8 @@ export const collections: Record<string, Def> = {
   },
   providers: {
     key: "id",
-    fields: { id: str, trade: str, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: bool },
-    index: [{ trade: 1, status: 1 }],
+    fields: { id: str, trade: str, trades: { bsonType: "array", minItems: 1, items: str }, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: bool },
+    index: [{ trade: 1, status: 1 }, { trades: 1 }],
   },
   requests: {
     key: "id",
@@ -73,6 +73,7 @@ export async function ensureCollections(db: Db, log: (msg: string) => void = () 
     await coll.createIndex({ [def.key]: 1 }, { unique: true });
     for (const keys of def.unique ?? []) await coll.createIndex(keys, { unique: true });
     for (const keys of def.index ?? []) await coll.createIndex(keys);
+    if ("trades" in def.fields) await coll.updateMany({ trades: { $exists: false } }, [{ $set: { trades: ["$trade"] } }]);
     if ("active" in def.fields) await coll.updateMany({ active: { $exists: false } }, { $set: { active: true } });
     log(`${existing.has(name) ? "updated" : "created"} ${name}`);
   }

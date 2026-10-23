@@ -1,6 +1,7 @@
 'use client';
 import { ArrowRight, ChevronRight, Droplets, Hammer, ShieldCheck, Star, MapPin, Zap, KeyRound, PaintRoller, BrickWall, Wrench } from 'lucide-react';
 import { designImages, providerImage, tradeImage } from '../../lib/design-images';
+import { tradesOf } from '../../lib/rules';
 import { RemoteImage } from './remote-image';
 
 export function Hero({ onExplore }: { onExplore: () => void }) {
@@ -46,7 +47,7 @@ export function PopularTrades({ onSelect }: { onSelect: (trade: string) => void 
   </section>;
 }
 
-type CatalogProvider = { id: string; name: string; photo?: string; trade: string; zone: string; rating?: number; description: string };
+type CatalogProvider = { id: string; name: string; photo?: string; trade: string; trades?: string[]; zone: string; rating?: number; description: string };
 export function ProfessionalCard({ provider, onOpen }: { provider: CatalogProvider; onOpen: () => void }) {
   const photo = providerImage(provider);
   const demo = String(provider.id).startsWith('catalog-provider-') || provider.id === 'demo-proveedor' || provider.id === 'presentation-provider-login';
@@ -54,7 +55,7 @@ export function ProfessionalCard({ provider, onOpen }: { provider: CatalogProvid
     <div className="professional-photo"><RemoteImage src={photo.src} alt={photo.illustrative ? `Fotografía ilustrativa de ${provider.trade}` : demo ? `Imagen ilustrativa de ${provider.name}` : `Fotografía de ${provider.name}`} loading="lazy" width={600} height={440}/>
       {(photo.illustrative || demo) && <span>{demo ? 'Perfil de demostración' : 'Imagen ilustrativa'}</span>}</div>
     <div className="professional-info"><span className="verified"><ShieldCheck size={14}/> Aprobado por Trade</span>
-      <h3>{provider.name}</h3><p className="professional-trade">{provider.trade}</p>
+      <h3>{provider.name}</h3><p className="professional-trade">{tradesOf(provider).join(' · ')}</p>
       <p className="professional-zone"><MapPin size={15}/>{provider.zone}</p>
       <p className="professional-rating"><Star size={16} fill={provider.rating ? 'currentColor' : 'none'}/><strong>{provider.rating ? Number(provider.rating).toFixed(1) : 'Sin reseñas'}</strong></p>
       <p className="professional-description">{provider.description}</p>
