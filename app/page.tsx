@@ -66,15 +66,15 @@ async function change(path:string,data:any){await api(path,data);await detail(se
 async function enterDemo(role:'cliente'|'proveedor'|'admin'){const account=presentationAccounts[role];await api('login',{email:account.email,password:account.password});await me();setPhoto('');setDocument('');go('home');window.scrollTo({top:0})}
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
 const pendingApplications=items.filter(p=>p.status==='Pendiente'&&(user?.id!=='presentation-admin-login'||p.id==='presentation-provider-login'));
-const nav=(!user?[['explore','Explorar profesionales',Search],['demo','Cuentas de presentación',UserRound]]:role==='admin'?[['home','Mi inicio',House],['admin','Proveedores pendientes',ShieldCheck]]:role==='proveedor'?[['home','Mi inicio',House],['apply','Mi perfil',UserRound],['available','Solicitudes para cotizar',ClipboardList],['assigned','Mis trabajos',Wrench]]:[['home','Mi inicio',House],['explore','Explorar profesionales',Search],['mine','Mis solicitudes y cotizaciones',ClipboardList],['create','Nueva solicitud',Plus]]) as any[];
+const nav=[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck],['demo','Recorrido de demo',Briefcase],['mine','Mis solicitudes',ClipboardList],...(application?.status==='Aprobada'?[['group','Como proveedor'],['available','Oportunidades',Briefcase],['assigned','Mis trabajos',Wrench]]:[]),...(user?.role==='admin'?[['group','Administración'],['admin','Revisar proveedores',ShieldCheck]]:[])] as any[];
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
-const providerLink=user&&role==='cliente'&&!application?{label:'Ofrecer mis servicios',page:'apply'}:null;
+const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
 return <div className="shell public-shell">
 <a className="skip-link" href="#main-content">Ir al contenido</a>
 <header className="site-header"><div className="site-header-inner">
   <a className="brand" href="/" aria-label="Trade inicio"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a>
   <nav ref={navigation} id="site-navigation" aria-label="Navegación principal" className={menuOpen?'site-navigation is-open':'site-navigation'}>
-    {nav.map(([key,label,Icon])=><button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination(key==='mine'?'mine':'explore');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
+    {nav.map(([key,label,Icon])=>key==='group'?<span key={label} className="nav-group-label">{label}</span>:<button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination(key==='mine'?'mine':'explore');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
     {providerLink&&<button className="mobile-offer" onClick={()=>go(providerLink.page)}>{providerLink.label}</button>}
   </nav>
   <div className="site-account">{user?<><span className="account-name"><span className="avatar">{user.name[0]}</span><b>{user.name}</b></span><button className="icon-button logout-button" aria-label="Cerrar sesión" onClick={()=>act(async()=>{await api('logout',{});setUser(null);setApplication(null);go('explore')})}><LogOut size={19}/><span>Cerrar sesión</span></button></>:<button className="secondary" onClick={()=>{setAuthDestination('explore');go('login')}}>Iniciar sesión</button>}
@@ -82,7 +82,7 @@ return <div className="shell public-shell">
   </div>
 </div></header>
 <div className="main"><main id="main-content" tabIndex={-1}>
-<div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}</div>
+<div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}{user&&providerLink&&<button className="text-link" onClick={()=>go(providerLink.page)}>{providerLink.label} <ArrowUpRight size={15}/></button>}</div>
 {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="notice" role="status"><Check size={18}/>{notice}</div>}
 {user&&page!=='demo'&&page!=='home'&&<RoleGuide user={user} application={application} selected={selected} page={page} onNavigate={go}/>}
 {page==='home'&&user&&<RoleHome role={role} user={user} application={application} onNavigate={go}/>}
@@ -134,7 +134,7 @@ return <div className="shell public-shell">
 </main><footer className="site-footer">
   <div><a className="brand" href="/"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a><p>Hogares más nuestros,<br/>un oficio a la vez.</p><small>Demostración académica · Sin pagos reales</small></div>
   {(!user||role==='cliente')&&<div><h3>Explorar</h3>{['Plomería','Electricidad','Carpintería'].map(t=><button key={t} onClick={()=>selectTrade(t)}>{t}</button>)}<button onClick={()=>selectTrade('')}>Todos los oficios</button></div>}
-  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button><button onClick={()=>go('demo')}>Cuentas de presentación</button></>}</div>
+  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.filter(([key])=>key!=='group').map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button><button onClick={()=>go('demo')}>Cuentas de presentación</button></>}</div>
   <div className="footer-bottom"><span>© {new Date().getFullYear()} Trade · Proyecto académico</span><span>Fotografías ilustrativas generadas para Trade</span></div>
 </footer></div></div>
 }
