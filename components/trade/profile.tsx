@@ -14,7 +14,7 @@ export function ProfilePage({ provider, onBack, onRequest }: {
   provider: Provider; onBack: () => void; onRequest: () => void;
 }) {
   const photo = providerImage(provider);
-  const demo = provider.id.startsWith('catalog-provider-');
+  const demo = provider.id.startsWith('catalog-provider-') || provider.id === 'demo-proveedor' || provider.id === 'presentation-provider-login';
   const works = Object.values(provider.works.reduce<Record<string, { request: string; before?: WorkFile; after?: WorkFile }>>((acc, file) => {
     const group = acc[file.request] ||= { request: file.request };
     group[file.kind] = file;
@@ -25,7 +25,7 @@ export function ProfilePage({ provider, onBack, onRequest }: {
   return <div className="profile-page">
     <button className="back" onClick={onBack}><ChevronLeft size={18}/> Volver a profesionales</button>
     <section className="profile-intro">
-      <figure className="profile-portrait"><RemoteImage className="profile-photo" src={photo.src} alt={photo.illustrative ? 'Imagen ilustrativa del oficio' : demo ? 'Avatar ficticio del perfil de demostración' : `Fotografía de ${provider.name}`} width={400} height={500}/>{(photo.illustrative || demo) && <figcaption>{demo ? 'Perfil ficticio de demostración' : 'Imagen ilustrativa · No es una fotografía del profesional'}</figcaption>}</figure>
+      <figure className="profile-portrait"><RemoteImage className="profile-photo" src={photo.src} alt={photo.illustrative ? 'Imagen ilustrativa del oficio' : demo ? 'Imagen ilustrativa del perfil ficticio' : `Fotografía de ${provider.name}`} width={400} height={500}/>{(photo.illustrative || demo) && <figcaption>{demo ? 'Perfil ficticio de demostración' : 'Imagen ilustrativa · No es una fotografía del profesional'}</figcaption>}</figure>
       <div className="profile-summary">
         <span className="verified"><ShieldCheck size={15}/> Perfil aprobado por Trade</span>
         <p className="approval-note">Aprobación administrativa interna de Trade.</p>
@@ -38,7 +38,7 @@ export function ProfilePage({ provider, onBack, onRequest }: {
       <aside className="profile-facts"><h2>Sobre su trabajo</h2><div><BriefcaseBusiness size={22}/><span><strong>Experiencia</strong>{provider.experience}</span></div><div><MapPin size={22}/><span><strong>Zona de servicio</strong>{provider.zone}</span></div><div><ShieldCheck size={22}/><span><strong>Oficio</strong>{provider.trade}</span></div></aside>
     </section>
     <section className="profile-section" aria-labelledby="profile-work-title"><div className="section-head"><div><h2 id="profile-work-title">Trabajos completados</h2><p>Fotografías compartidas en servicios completados de Trade.</p></div></div>
-      {works.length ? <div className="profile-work-grid">{works.map(work => <article className="work-card" key={work.request}><div className="work-pair">{(['before', 'after'] as const).map(kind => <figure key={kind}>{work[kind] ? <RemoteImage src={'/api/files/' + encodeURIComponent(work[kind].id)} alt={kind === 'before' ? 'Evidencia antes del trabajo' : 'Evidencia después del trabajo'} loading="lazy"/> : <span className="work-missing">Sin foto</span>}<figcaption>{kind === 'before' ? 'Antes' : 'Después'}</figcaption></figure>)}</div><p>Servicio completado · {work.request.slice(0, 8)}</p></article>)}</div>
+      {works.length ? <div className="profile-work-grid">{works.map(work => <article className="work-card" key={work.request}><div className="work-pair">{(['before', 'after'] as const).map(kind => <figure key={kind}>{work[kind] ? <RemoteImage src={'/api/files/' + encodeURIComponent(work[kind].id)} alt={kind === 'before' ? 'Evidencia antes del trabajo' : 'Evidencia después del trabajo'} loading="lazy"/> : <span className="work-missing">Sin foto</span>}<figcaption>{kind === 'before' ? 'Antes' : 'Después'}</figcaption></figure>)}</div><p>{provider.trade} · Servicio completado{demo ? ' · Ejemplo ficticio' : ''}</p></article>)}</div>
         : <div className="empty profile-empty"><BriefcaseBusiness size={32}/><h3>Aún no hay trabajos publicados</h3><p>Las evidencias aparecerán cuando se complete un servicio y se compartan fotografías.</p></div>}
     </section>
     <section className="profile-section" aria-labelledby="profile-reviews-title"><div className="section-head"><div><h2 id="profile-reviews-title">Reseñas</h2><p>Opiniones registradas por clientes de servicios completados.</p></div></div>

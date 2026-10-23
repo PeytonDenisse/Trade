@@ -1,10 +1,17 @@
 {
-  "executedAt": "2026-10-22T15:05:29.592Z",
+  "executedAt": "2026-10-22T21:00:53.373Z",
   "environment": "MongoDB temporary server + MongoDB image storage; same API handler as deployment",
   "results": [
     {
       "historia": "HU-08, HU-11, HU-19",
       "escenario": "Valores inválidos rechazados",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Presentación",
+      "escenario": "Casos preparados con imágenes, permisos, roles y restablecimiento sin borrar solicitudes ajenas",
       "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
       "obtenido": "Aserciones correctas",
       "estado": "aprobado"

@@ -49,9 +49,9 @@ export function PopularTrades({ onSelect }: { onSelect: (trade: string) => void 
 type CatalogProvider = { id: string; name: string; photo?: string; trade: string; zone: string; rating?: number; description: string };
 export function ProfessionalCard({ provider, onOpen }: { provider: CatalogProvider; onOpen: () => void }) {
   const photo = providerImage(provider);
-  const demo = String(provider.id).startsWith('catalog-provider-');
+  const demo = String(provider.id).startsWith('catalog-provider-') || provider.id === 'demo-proveedor' || provider.id === 'presentation-provider-login';
   return <article className="professional-card">
-    <div className="professional-photo"><RemoteImage src={photo.src} alt={photo.illustrative ? `Fotografía ilustrativa de ${provider.trade}` : demo ? `Avatar ficticio de ${provider.name}` : `Fotografía de ${provider.name}`} loading="lazy" width={600} height={440}/>
+    <div className="professional-photo"><RemoteImage src={photo.src} alt={photo.illustrative ? `Fotografía ilustrativa de ${provider.trade}` : demo ? `Imagen ilustrativa de ${provider.name}` : `Fotografía de ${provider.name}`} loading="lazy" width={600} height={440}/>
       {(photo.illustrative || demo) && <span>{demo ? 'Perfil de demostración' : 'Imagen ilustrativa'}</span>}</div>
     <div className="professional-info"><span className="verified"><ShieldCheck size={14}/> Aprobado por Trade</span>
       <h3>{provider.name}</h3><p className="professional-trade">{provider.trade}</p>

@@ -20,8 +20,8 @@ export async function seedCatalog(env:any,db:Db){
  await add('users','id',{id:'catalog-client',name:'Cliente ficticio · Demo',email:'catalog-client@trade.example',hash:crypto.randomUUID(),salt:crypto.randomUUID(),role:'cliente'});
  for(let i=0;i<catalog.length;i++){
  const [name,trade,experience,zone,description,color,rating,job]=catalog[i],uid=`catalog-provider-${i+1}`,photo=uid+'-avatar',document=uid+'-document',rid=uid+'-service',qid=uid+'-quote';
- await env.BUCKET.put(photo,avatar(name,color),{httpMetadata:{contentType:'image/svg+xml'}});
- await env.BUCKET.put(document,'<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#e9eee8"/><text x="40" y="150" font-size="28" font-family="Arial">PERFIL FICTICIO · DEMOSTRACIÓN</text><text x="40" y="220" font-size="22" font-family="Arial">Sin documento de identidad real</text></svg>',{httpMetadata:{contentType:'image/svg+xml'}});
+ if(!await env.BUCKET.get(photo))await env.BUCKET.put(photo,new TextEncoder().encode(avatar(name,color)),{httpMetadata:{contentType:'image/svg+xml'}});
+ if(!await env.BUCKET.get(document))await env.BUCKET.put(document,new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#e9eee8"/><text x="40" y="150" font-size="28" font-family="Arial">PERFIL FICTICIO · DEMOSTRACIÓN</text><text x="40" y="220" font-size="22" font-family="Arial">Sin documento de identidad real</text></svg>'),{httpMetadata:{contentType:'image/svg+xml'}});
  await add('users','id',{id:uid,name:name+' · Demo',email:`proveedor${i+1}@trade.example`,hash:crypto.randomUUID(),salt:crypto.randomUUID(),role:'proveedor'});
  await add('files','id',{id:photo,owner:uid,request:null,kind:'photo',mime:'image/svg+xml'});
  await add('files','id',{id:document,owner:uid,request:null,kind:'document',mime:'image/svg+xml'});
