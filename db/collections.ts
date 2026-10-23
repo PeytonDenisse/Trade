@@ -44,8 +44,9 @@ export const collections: Record<string, Def> = {
     // target: provider the client asked directly; empty means any approved provider of the trade.
     // status: Activa → Asignada → Terminado → Completado, or Cancelada / Vencida / En disputa.
     // closed_reason: why it was cancelled (by the client or administration).
-    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str, target: optStr, closed_reason: optStr },
-    optional: ["provider", "quote", "target", "closed_reason"],
+    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str, target: optStr, closed_reason: optStr,
+      location: { bsonType: "object", required: ["lat", "lng"], additionalProperties: false, properties: { lat: { bsonType: "number", minimum: -90, maximum: 90 }, lng: { bsonType: "number", minimum: -180, maximum: 180 }, address: { bsonType: "string", maxLength: 300 } } } },
+    optional: ["provider", "quote", "target", "closed_reason", "location"],
     index: [{ owner: 1 }, { provider: 1 }, { trade: 1, status: 1 }, { target: 1 }],
   },
   quotes: {

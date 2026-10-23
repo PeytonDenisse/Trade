@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import 'leaflet/dist/leaflet.css';
 import './globals.css';
 import './mockup.css';
 export const metadata: Metadata={title:'Trade · Oficios de confianza',description:'Encuentra, contrata y da seguimiento a tus servicios en un solo lugar.'};
