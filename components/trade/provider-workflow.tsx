@@ -1,7 +1,8 @@
 'use client';
 import {useId,useState,type FormEvent,type ReactNode} from 'react';
 import {ArrowRight,BriefcaseBusiness,CalendarDays,Camera,CheckCircle2,ChevronLeft,ClipboardList,Image as ImageIcon,LockKeyhole,ShieldCheck,Wrench} from 'lucide-react';
-import {trades,tradesOf} from '../../lib/rules';
+import {tradesOf} from '../../lib/rules';
+import {useTrades} from './trades-context';
 import {designImages,fileSrc} from '../../lib/design-images';
 import {RemoteImage} from './remote-image';
 
@@ -15,6 +16,7 @@ function Status({value}:{value:string}){return <span className="status request-s
 
 export function ProviderApplication({authenticated,application,photoId,documentId,photoUpload,documentUpload,onLogin,onOpportunities,onSubmit}:{authenticated:boolean;application:Application|null;photoId:string;documentId:string;photoUpload:ReactNode;documentUpload:ReactNode;onLogin:()=>void;onOpportunities:()=>void;onSubmit:(values:ApplicationValues)=>Promise<void>}){
   const id=useId();
+  const trades=useTrades();
   const [values,setValues]=useState<ApplicationValues>({trades:[],experience:'',zone:'',description:''});
   const [errors,setErrors]=useState<Partial<Record<keyof ApplicationValues|'photo'|'document',string>>>({});
   const [formError,setFormError]=useState('');

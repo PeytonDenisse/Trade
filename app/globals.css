@@ -356,3 +356,19 @@ nav button.active { color: var(--green); background: #f5e3d9; }
   .admin-nav-select { display: grid; gap: 6px; font-weight: 600; }
   .admin-nav-select select { font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 }
+.inline-form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.inline-form .settings-field { width: auto; flex: 1 1 240px; max-width: 360px; }
+.inline-form.compact { align-items: center; }
+.inline-form.compact input { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.inline-form .primary { display: inline-flex; align-items: center; gap: 6px; }
+.trades-admin, .data-tools { display: grid; gap: 20px; }
+.data-tools section { display: grid; gap: 10px; }
+.data-tools .muted { margin: 0; }
+.export-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.export-card { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--ink); text-decoration: none; }
+.export-card:hover { border-color: var(--action); }
+.export-card span { display: grid; gap: 4px; }
+.export-card small { color: var(--muted); }
+.import-upload { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 0; padding: 12px 18px; justify-self: start; cursor: pointer; }
+.import-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.row-actions .text-button { display: inline-flex; align-items: center; gap: 4px; }

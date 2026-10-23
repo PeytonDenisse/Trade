@@ -1,7 +1,7 @@
 'use client';
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, CalendarDays, CheckCircle2, Eye, EyeOff, FileText, ShieldCheck } from 'lucide-react';
-import { trades } from '../../lib/rules';
+import { useTrades } from './trades-context';
 import { designImages } from '../../lib/design-images';
 import { RemoteImage } from './remote-image';
 
@@ -91,6 +91,7 @@ const today = () => {
 
 export function CreateRequestPage({ initialTrade = '', excludeTrades = [], target = null, onClearTarget, onSubmit }: { initialTrade?: string; excludeTrades?: string[]; target?: { name: string; trades: string[] } | null; onClearTarget?: () => void; onSubmit: (values: RequestValues) => Promise<void> }) {
   const id = useId();
+  const trades = useTrades();
   const options = trades.filter(trade => !excludeTrades.includes(trade) && (!target || target.trades.includes(trade)));
   const [values, setValues] = useState<RequestValues>({ trade: initialTrade, description: '', date: '' });
   const [errors, setErrors] = useState<Partial<Record<RequestField, string>>>({});

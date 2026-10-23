@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Plus,Wrench,UserRound,Briefcase,ClipboardList,Camera,ChevronLeft} from 'lucide-react';
 import {trades,isActive,tradesOf} from '../lib/rules';
+import {TradesContext} from '../components/trade/trades-context';
 import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../components/trade/marketing';
 import {ProfilePage} from '../components/trade/profile';
 import {AccessPage,CreateRequestPage,PublishedNotice} from '../components/trade/access-request';
@@ -62,6 +63,8 @@ const [requestTarget,setRequestTarget]=useState<{id:string;name:string;trades:st
 // Admin section (/admin/:tab) and the person page open in it (/admin/personas/:id).
 const [adminTab,setAdminTab]=useState('tablero'),[personId,setPersonId]=useState('');
 const [resetToken,setResetToken]=useState('');
+// Active trades from the database (administration manages them).
+const [tradeNames,setTradeNames]=useState<string[]>(trades);
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
 // The provider's own trade can't be requested; an empty trade means the client chooses.
 function startRequest(trade='',target:{id:string;name:string;trades:string[]}|null=null){setRequestTrade(trade);setRequestTarget(target);if(user)go('create');else{setAuthDestination('create');go('login')}}
@@ -78,10 +81,10 @@ useEffect(()=>{load()},[view,filter]);
 const privatePages=['home','mine','create','apply','available','assigned','account','saved','admin'];
 // True while the address is being turned into screen state, so that state is not pushed back.
 const applyingUrl=useRef(true);
-async function openPath(pathname:string,u:any,app:any){
+async function openPath(pathname:string,u:any,app:any,names:string[]=tradeNames){
   applyingUrl.current=true;
   try{
-    const r=parsePath(pathname,trades);
+    const r=parsePath(pathname,names);
     const target=r.page==='admin'?'home':r.page;
     if(u&&pathname==='/'){go('home',u,app);return}
     if(!u&&privatePages.includes(r.page)){setAuthDestination(target);go('login',u,app);return}
@@ -94,7 +97,7 @@ async function openPath(pathname:string,u:any,app:any){
   }catch(e:any){setError(e.message)}
   finally{window.requestAnimationFrame(()=>{applyingUrl.current=false})}
 }
-useEffect(()=>{me().then(d=>openPath(window.location.pathname,d.user,d.application)).catch(e=>{setError(e.message);applyingUrl.current=false})},[]);
+useEffect(()=>{Promise.all([me(),api('trades').catch(()=>trades)]).then(([d,names])=>{setTradeNames(names);return openPath(window.location.pathname,d.user,d.application,names)}).catch(e=>{setError(e.message);applyingUrl.current=false})},[]);
 useEffect(()=>{const onPop=()=>openPath(window.location.pathname,user,application);window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop)},[user,application]);
 function go(p:string,u:any=user,app:any=application){
   // Signed-in people reach their working page as Mi inicio; visitors have no Mi inicio.
@@ -117,7 +120,7 @@ const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='hom
 useEffect(()=>{if(!applyingUrl.current&&window.location.pathname!==path)window.history.pushState(null,'',path)},[path]);
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
 const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
-return <div className="shell public-shell">
+return <TradesContext.Provider value={tradeNames}><div className="shell public-shell">
 <a className="skip-link" href="#main-content">Ir al contenido</a>
 <header className="site-header"><div className="site-header-inner">
   <a className="brand" href="/" aria-label="Trade inicio"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a>
@@ -139,7 +142,7 @@ return <div className="shell public-shell">
 <PopularTrades onSelect={selectTrade}/>
 <section className="catalog professional-catalog" id="catalogo" tabIndex={-1}>
   <div className="section-head"><div><p className="eyebrow">PERSONAS QUE SABEN HACERLO</p><h2>{filter?'Resultados en '+filter:'Profesionales destacados'}</h2><p>Conoce su experiencia y solicita una cotización para tu proyecto.</p></div>
-  <div className="catalog-controls"><label className="catalog-filter catalog-search">Buscar<input type="search" value={catalogQuery} onChange={e=>setCatalogQuery(e.target.value)} placeholder="Nombre o zona"/></label><label className="catalog-filter">Oficio<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Todos los oficios</option>{trades.map(t=><option key={t}>{t}</option>)}</select></label></div></div>
+  <div className="catalog-controls"><label className="catalog-filter catalog-search">Buscar<input type="search" value={catalogQuery} onChange={e=>setCatalogQuery(e.target.value)} placeholder="Nombre o zona"/></label><label className="catalog-filter">Oficio<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Todos los oficios</option>{tradeNames.map(t=><option key={t}>{t}</option>)}</select></label></div></div>
   <div className="catalog-meta"><span>{shownProviders.length} {shownProviders.length===1?'perfil aprobado':'perfiles aprobados'}{catalogQuery.trim()?` para «${catalogQuery.trim()}»`:''}</span><span>Los perfiles de demostración y las imágenes ilustrativas están identificados.</span></div>
   {loading?<p role="status">Buscando profesionales…</p>:shownProviders.length?<div className={filter||catalogQuery?'professional-grid is-filtered':'professional-grid'}>{shownProviders.map(p=><ProfessionalCard key={p.id} provider={p} onOpen={()=>act(async()=>{setProfile(await api('providers/'+p.id));window.scrollTo({top:0})})}/>)}</div>:<div className="empty"><Wrench size={36}/><h3>{catalogQuery.trim()?'Nadie coincide con tu búsqueda':'No hay profesionales de este oficio'}</h3><p>{catalogQuery.trim()?'Prueba con otro nombre o zona.':'Explora otros oficios o vuelve más tarde.'}</p><button className="secondary" onClick={()=>{setFilter('');setCatalogQuery('')}}>Ver todos los profesionales <ArrowRight size={16}/></button></div>}
 </section>
@@ -176,7 +179,7 @@ return <div className="shell public-shell">
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
-{view==='admin'&&user&&<AdminPortal api={api} tab={adminTab} personId={personId} me={user.id} onTab={tab=>{setAdminTab(tab);setPersonId('');window.scrollTo({top:0})}} onPerson={id=>{setPersonId(id);window.scrollTo({top:0})}}/>}
+{view==='admin'&&user&&<AdminPortal api={api} tab={adminTab} personId={personId} me={user.id} onTab={tab=>{setAdminTab(tab);setPersonId('');window.scrollTo({top:0})}} onPerson={id=>{setPersonId(id);window.scrollTo({top:0})}} onTradesChanged={()=>api('trades').then(setTradeNames)}/>}
 
 {page==='account'&&user&&<AccountPage key={user.id} user={user}
   photoUpload={<Upload kind="avatar" label={user.photo?'Cambiar foto':'Subir foto'} onDone={async(id:string)=>{await api('account',{photo:id});await me();toast('Foto actualizada.')}}/>}
@@ -193,5 +196,5 @@ return <div className="shell public-shell">
   {(!user||role==='cliente')&&<div><h3>Explorar</h3>{['Plomería','Electricidad','Carpintería'].map(t=><button key={t} onClick={()=>selectTrade(t)}>{t}</button>)}<button onClick={()=>selectTrade('')}>Todos los oficios</button></div>}
   <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.filter(([key])=>key!=='group').map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button></>}</div>
   <div className="footer-bottom"><span>© {new Date().getFullYear()} Trade · Proyecto académico</span><span>Fotografías ilustrativas generadas para Trade</span></div>
-</footer></div></div>
+</footer></div></div></TradesContext.Provider>
 }

@@ -58,6 +58,11 @@ export const collections: Record<string, Def> = {
     optional: ["request", "url"],
     index: [{ owner: 1 }, { request: 1 }],
   },
+  trades: {
+    key: "name",
+    // The trades the platform offers; inactive ones leave the catalog and new requests.
+    fields: { name: str, active: bool, order: num },
+  },
   audit_log: {
     key: "id",
     // One row per admin action: who did what to whom, and why.

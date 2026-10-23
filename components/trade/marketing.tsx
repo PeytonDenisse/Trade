@@ -3,6 +3,7 @@ import { ArrowRight, ChevronRight, Droplets, Hammer, ShieldCheck, Star, MapPin, 
 import { designImages, providerImage, tradeImage } from '../../lib/design-images';
 import { tradesOf } from '../../lib/rules';
 import { RemoteImage } from './remote-image';
+import { useTrades } from './trades-context';
 
 export function Hero({ onExplore }: { onExplore: () => void }) {
   return <section className="landing-hero hero-highlight">
@@ -33,10 +34,12 @@ const tradeCards = [
 ];
 
 export function PopularTrades({ onSelect }: { onSelect: (trade: string) => void }) {
+  // Active trades in admin order; ones added by administration get a generic card.
+  const cards = useTrades().map(name => tradeCards.find(card => card.name === name) || { name, description: `Profesionales de ${name.toLowerCase()}.`, Icon: Wrench });
   return <section className="popular-trades" aria-labelledby="popular-title">
-    <div className="section-head"><div><h2 id="popular-title">Explora los oficios</h2><p>Siete formas de encontrar ayuda para tu proyecto.</p></div>
+    <div className="section-head"><div><h2 id="popular-title">Explora los oficios</h2><p>{cards.length} oficios para encontrar ayuda en tu proyecto.</p></div>
       <button className="secondary" onClick={() => onSelect('')}>Ver profesionales <ArrowRight size={16}/></button></div>
-    <div className="trade-grid">{tradeCards.map(({ name, description, Icon }, index) =>
+    <div className="trade-grid">{cards.map(({ name, description, Icon }, index) =>
       <button className={index < 3 ? 'trade-card' : 'trade-card trade-card-compact'} key={name} onClick={() => onSelect(name)}>
         {index < 3 && <RemoteImage src={tradeImage(name)} alt={`Fotografía ilustrativa de ${name.toLowerCase()}`} loading="lazy" width={600} height={380}/>}
         <span className="trade-card-icon"><Icon size={24}/></span>
