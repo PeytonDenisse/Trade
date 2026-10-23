@@ -4,7 +4,8 @@ import type { Db } from "mongodb";
 const str = { bsonType: "string" };
 const optStr = { bsonType: ["string", "null"] };
 const num = { bsonType: "number" };
-const optBool = { bsonType: ["bool", "null"] };
+// active is required on users and providers: true unless an admin deactivated the record.
+const bool = { bsonType: "bool" };
 
 type Def = { key: string; fields: Record<string, object>; optional?: string[]; unique?: Record<string, 1>[]; index?: Record<string, 1>[] };
 
@@ -12,8 +13,7 @@ type Def = { key: string; fields: Record<string, object>; optional?: string[]; u
 export const collections: Record<string, Def> = {
   users: {
     key: "id",
-    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: optBool },
-    optional: ["active"],
+    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: bool },
     unique: [{ email: 1 }],
   },
   sessions: {
@@ -23,8 +23,7 @@ export const collections: Record<string, Def> = {
   },
   providers: {
     key: "id",
-    fields: { id: str, trade: str, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: optBool },
-    optional: ["active"],
+    fields: { id: str, trade: str, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: bool },
     index: [{ trade: 1, status: 1 }],
   },
   requests: {

@@ -76,6 +76,8 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(teamEnv,'demo',{role:'owner'},'',400);
  for(const role of ['cliente','proveedor','admin']){const demoSession=await request(teamEnv,'demo',{role});const identity=(await request(teamEnv,'me',undefined,demoSession.cookie)).data;assert.equal(identity.user.id,'demo-'+role);if(role==='admin')await request(teamEnv,'applications',undefined,demoSession.cookie);}
  await request({...env,DEMO_ENABLED:'false'},'demo',{role:'admin'},'',403);
+ // Active flag is required: the database rejects users and providers without it.
+ await assert.rejects(db.collection('users').insertOne({id:'sin-activo',name:'Sin activo',email:'sin-activo@example.test',hash:'x',salt:'x',role:'cliente'}),(e:any)=>e.code===121);ok('Activo','La base de datos rechaza usuarios sin el campo active');
  // Active flag: deactivated providers disappear and cannot quote; deactivated accounts cannot log in.
  assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.active,true);
  await db.collection('providers').updateOne({id:workerId},{$set:{active:false}});assert.ok(!(await request(env,'providers')).data.some((p:any)=>p.id===workerId));await request(env,'providers/'+workerId,undefined,'',404);await request(env,'requests?scope=available',undefined,worker.cookie,403);assert.equal((await request(env,'me',undefined,worker.cookie)).data.user.id,workerId);
