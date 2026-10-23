@@ -242,3 +242,18 @@ test('Ciclo de solicitudes y moderación: cancelar, vencer, reportar, resolver y
  assert.equal((await request(env,'requests/'+stuck,undefined,ana.cookie)).data.closed_reason,'Duplicada');
  await request(env,'admin/moderation',undefined,ana.cookie,403);
 });
+test('Reportes y actividad: números de la plataforma y bitácora filtrable',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const ana=await request(env,'register',credentials('ana'));const anaId=(await request(env,'me',undefined,ana.cookie)).data.user.id;
+ await request(env,'requests',{trade:'Pintura',description:'Pintar',date:'2099-01-01'},ana.cookie,201);await request(env,'requests',{trade:'Pintura',description:'Pintar 2',date:'2099-01-01'},ana.cookie,201);await request(env,'requests',{trade:'Plomería',description:'Fuga',date:'2099-01-01'},ana.cookie,201);
+ await request(env,'admin/analytics',undefined,ana.cookie,403);
+ const a=(await request(env,'admin/analytics',undefined,boss.cookie)).data;
+ assert.equal(a.months.length,6);assert.equal(a.months[5].requests,3);assert.equal(a.months[0].requests,0);
+ assert.deepEqual(a.byTrade[0],{trade:'Pintura',requests:2,completed:0});assert.equal(a.statuses.Activa,3);assert.equal(a.acceptedPrice,null);
+ await request(env,'account-active',{id:anaId,active:false,reason:'Spam'},boss.cookie);await request(env,'account-active',{id:anaId,active:true},boss.cookie);await request(env,'admin/trade',{name:'Jardinería'},boss.cookie);
+ assert.equal((await request(env,'admin/audit',undefined,boss.cookie)).data.length,3);
+ assert.equal((await request(env,'admin/audit?kind=account',undefined,boss.cookie)).data.length,2);
+ assert.equal((await request(env,'admin/audit?q=spam',undefined,boss.cookie)).data[0].action,'account.deactivate');
+ assert.equal((await request(env,'admin/audit?q=(',undefined,boss.cookie)).data.length,0);
+ await request(env,'admin/audit',undefined,ana.cookie,401);
+});

@@ -75,6 +75,30 @@ export async function adminGet(x:Ctx,path:string){
   ]);
   return x.json({reports,reviews,waiting});
  }
+ // Reportes: requests over the last six months, by trade, outcomes, prices and the best-rated providers.
+ if(path==='admin/analytics'){
+  admin(x);const start=new Date();start.setUTCDate(1);start.setUTCMonth(start.getUTCMonth()-5);const from=start.toISOString().slice(0,7);
+  const [months,byTrade,statuses,price,rating,top]=await Promise.all([
+   x.agg('requests',[{$set:{month:{$substrCP:['$created',0,7]}}},{$match:{month:{$gte:from}}},{$group:{_id:'$month',n:{$sum:1}}}]),
+   x.agg('requests',[{$group:{_id:'$trade',n:{$sum:1},completed:{$sum:{$cond:[{$eq:['$status','Completado']},1,0]}}}},{$sort:{n:-1,_id:1}}]),
+   x.agg('requests',[{$group:{_id:'$status',n:{$sum:1}}}]),
+   x.agg('quotes',[{$match:{status:'Aceptada'}},{$group:{_id:null,avg:{$avg:'$price'},n:{$sum:1}}}]),
+   x.agg('reviews',[{$match:{hidden:{$ne:true},stars:{$ne:null}}},{$group:{_id:null,avg:{$avg:'$stars'},n:{$sum:1}}}]),
+   x.agg('requests',[{$match:{status:'Completado',provider:{$ne:null}}},{$group:{_id:'$provider',completed:{$sum:1}}},{$lookup:{from:'reviews',let:{p:'$_id'},pipeline:[{$match:{$expr:{$eq:['$provider','$$p']},hidden:{$ne:true}}}],as:'_r'}},{$lookup:{from:'users',localField:'_id',foreignField:'id',as:'_u'}},{$project:{_id:0,id:'$_id',completed:1,name:{$first:'$_u.name'},rating:{$avg:'$_r.stars'}}},{$sort:{completed:-1,rating:-1}},{$limit:5}]),
+  ]);
+  // Every one of the six months appears, with zero when nothing was created.
+  const counts=Object.fromEntries(months.map(m=>[m._id,m.n]));
+  const series=Array.from({length:6},(_,i)=>{const d=new Date(start);d.setUTCMonth(start.getUTCMonth()+i);const key=d.toISOString().slice(0,7);return {month:key,requests:counts[key]||0}});
+  return x.json({months:series,byTrade:byTrade.map(t=>({trade:t._id,requests:t.n,completed:t.completed})),statuses:Object.fromEntries(statuses.map(s=>[s._id,s.n])),acceptedPrice:price[0]?{average:price[0].avg,count:price[0].n}:null,rating:rating[0]?{average:rating[0].avg,count:rating[0].n}:null,topProviders:top});
+ }
+ // Actividad: the audit log, newest first, filtered by kind of action or text.
+ if(path==='admin/audit'){
+  admin(x);const kind=x.url.searchParams.get('kind')||'',q=(x.url.searchParams.get('q')||'').trim().slice(0,80);
+  const filter:any={};
+  if(kind)filter.action={$regex:'^'+kind.replace(/[^a-z]/g,'')+'\\.'};
+  if(q){const re={$regex:q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),$options:'i'};filter.$or=[{actor_name:re},{target_name:re},{detail:re}]}
+  return x.json(await x.c('audit_log').find(filter,{projection:{_id:0},sort:{at:-1,_id:-1},limit:200}).toArray());
+ }
  if(path==='admin/team'){admin(x);return x.json(await x.all('users',{role:'admin'},{name:1},{id:1,name:1,email:1,active:1,created_at:1}))}
  if(path==='admin/settings'){admin(x);return x.json(await getSettings(x.db))}
  // Oficios with how many providers offer each one and how many requests use it.
