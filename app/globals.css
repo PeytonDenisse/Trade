@@ -178,3 +178,11 @@ nav button.active { color: var(--green); background: #f5e3d9; }
   .people-search { grid-column: 1 / -1; }
   .people-table td[data-label="Acción"]:empty { display: none; }
 }
+
+/* Deactivated accounts/providers and per-row admin actions. */
+.public-shell .status[data-status="Desactivada"] { color: #6c625c; background: #eee8e2; margin-left: 6px; }
+.row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.row-actions .text-button { margin: 0; font-size: 13px; }
+.row-actions .text-button.danger { color: #9c2f2f; }
+.people-filters { grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(130px, 1fr)); }
+@media (max-width: 760px) { .people-filters { grid-template-columns: 1fr 1fr; } }

@@ -130,7 +130,7 @@ return <div className="shell public-shell">
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
-{page==='admin'&&<AdminReview items={items} people={people} presentationOnly={user?.id==='presentation-admin-login'} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}}/>}
+{page==='admin'&&<AdminReview items={items} people={people} presentationOnly={user?.id==='presentation-admin-login'} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}} onSetActive={async(kind,id,active)=>{await api(kind==='account'?'account-active':'provider-active',{id,active});await load()}}/>}
 {page==='demo'&&<DemoPage onEnter={enterDemo}/>}
 {page==='guide'&&<GuidePage onExplore={()=>{go('explore');window.requestAnimationFrame(focusCatalog)}}/>}
 </main><footer className="site-footer">
