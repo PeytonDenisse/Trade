@@ -101,7 +101,7 @@ return <div className="shell public-shell">
   <div className="catalog-meta"><span>{providers.length} {providers.length===1?'perfil aprobado':'perfiles aprobados'}</span><span>Los perfiles de demostración y las imágenes ilustrativas están identificados.</span></div>
   {loading?<p role="status">Buscando profesionales…</p>:providers.length?<div className={filter?'professional-grid is-filtered':'professional-grid'}>{providers.map(p=><ProfessionalCard key={p.id} provider={p} onOpen={()=>act(async()=>{setProfile(await api('providers/'+p.id));window.scrollTo({top:0})})}/>)}</div>:<div className="empty"><Wrench size={36}/><h3>No hay profesionales de este oficio</h3><p>Explora otros oficios o vuelve más tarde.</p><button className="secondary" onClick={()=>setFilter('')}>Ver todos los oficios <ArrowRight size={16}/></button></div>}
 </section>
-<HowItWorks onExplore={focusCatalog}/>
+<HowItWorks onExplore={focusCatalog} onGuide={()=>{go('guide');window.scrollTo({top:0})}}/>
 </>}
 {profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrade={ownTrade} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(profile.trade)}/>}
 {['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}

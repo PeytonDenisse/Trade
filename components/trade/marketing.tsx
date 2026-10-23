@@ -70,13 +70,13 @@ export function HomeBanner({ onExplore, label = 'Explorar profesionales' }: { on
   </section>;
 }
 
-export function HowItWorks({ onExplore }: { onExplore: () => void }) {
+export function HowItWorks({ onExplore, onGuide }: { onExplore: () => void; onGuide: () => void }) {
   const steps = [
     { title: 'Publica tu solicitud', description: 'Describe qué necesitas y añade fotos si lo deseas.', image: designImages.planning },
     { title: 'Recibe cotizaciones', description: 'Compara el precio y el alcance de las propuestas.', image: designImages.electrical },
     { title: 'Confirma el trabajo', description: 'Revisa las evidencias, confirma y comparte tu experiencia.', image: designImages.carpentry },
   ];
-  return <><section className="how-it-works"><h2>Así funciona</h2><p>De una idea a un proyecto resuelto, paso a paso.</p>
+  return <><section className="how-it-works"><div className="how-heading"><div><h2>Así funciona</h2><p>De una idea a un proyecto resuelto, paso a paso.</p></div><button className="secondary" onClick={onGuide}>Ver cómo funciona <ArrowRight size={17}/></button></div>
     <div className="how-grid">{steps.map((step, i) => <article key={step.title}>
       <div className="how-photo"><RemoteImage src={step.image} alt="Fotografía ilustrativa del proceso" loading="lazy" width={500} height={300}/><span>{i + 1}</span></div>
       <h3>{step.title}</h3><p>{step.description}</p>
