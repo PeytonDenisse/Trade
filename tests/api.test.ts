@@ -103,3 +103,33 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(env,'account-active',{id:otherId,active:false},admin.cookie);assert.equal((await request(env,'me',undefined,otherLogin.cookie)).data.user,null);assert.equal((await request(env,'users',undefined,admin.cookie)).data.find((p:any)=>p.id===otherId).active,false);await request(env,'account-active',{id:otherId,active:true},admin.cookie);await request(env,'login',credentials('other'));
  await request(env,'provider-active',{id:workerId,active:false},admin.cookie);assert.ok(!(await request(env,'providers')).data.some((p:any)=>p.id===workerId));assert.equal((await request(env,'users',undefined,admin.cookie)).data.find((p:any)=>p.id===workerId).provider_active,false);await request(env,'provider-active',{id:workerId,active:true},admin.cookie);assert.ok((await request(env,'providers')).data.some((p:any)=>p.id===workerId));ok('Administración','Administración desactiva y reactiva cuentas y proveedores; nunca otra cuenta de administración');
  console.log('TRADE_TEST_REPORT='+JSON.stringify(records));});
+test('Cuenta: ajustes, contraseña, desactivación y recuperación',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const ana=await request(env,'register',credentials('ana'));const admin=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const anaId=(await request(env,'me',undefined,ana.cookie)).data.user.id;assert.ok((await db.collection('users').findOne({id:anaId}))!.created_at);
+ // Name and avatar
+ await request(env,'account',{name:'Ana López'},ana.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.name,'Ana López');
+ await request(env,'account',{},ana.cookie,400);await request(env,'account',{name:'x'},'',401);
+ const avatar=(await upload(env,ana.cookie,'avatar')).data.id;await request(env,'account',{photo:avatar},ana.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.photo_url,'/api/files/'+avatar);
+ const otherAvatar=(await upload(env,admin.cookie,'avatar')).data.id;await request(env,'account',{photo:otherAvatar},ana.cookie,400);
+ await request(env,'account',{photo:null},ana.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.photo,null);
+ // Password change keeps this session and closes the others
+ const second=await request(env,'login',credentials('ana'));
+ await request(env,'account-password',{current:'mal',password:'Otra-clave-segura-1'},ana.cookie,403);await request(env,'account-password',{current:credentials('ana').password,password:'corta'},ana.cookie,400);
+ await request(env,'account-password',{current:credentials('ana').password,password:'Otra-clave-segura-1'},ana.cookie);
+ assert.ok((await request(env,'me',undefined,ana.cookie)).data.user);assert.equal((await request(env,'me',undefined,second.cookie)).data.user,null);
+ await request(env,'login',credentials('ana'),'',401);await request(env,'login',{...credentials('ana'),password:'Otra-clave-segura-1'});
+ // Recovery: request, admin issues a link, link sets a new password once
+ const forgot=(await request(env,'forgot',{email:'ana@example.test'})).data;const unknown=(await request(env,'forgot',{email:'nadie@example.test'})).data;assert.equal(forgot.message,unknown.message);
+ await request(env,'password-resets',undefined,ana.cookie,403);const open=(await request(env,'password-resets',undefined,admin.cookie)).data;assert.equal(open.length,1);assert.equal(open[0].email,'ana@example.test');assert.equal(open[0].token_hash,undefined);
+ await request(env,'reset-link',{id:anaId},ana.cookie,403);const link=(await request(env,'reset-link',{id:anaId},admin.cookie)).data.path as string;const token=link.split('/').pop()!;
+ assert.ok(!(await db.collection('password_resets').findOne({token_hash:token})));
+ assert.deepEqual((await request(env,'reset/'+token)).data,{valid:true,name:'Ana López'});assert.equal((await request(env,'reset/otro')).data.valid,false);
+ await request(env,'reset',{token,password:'corta'},'',400);await request(env,'reset',{token,password:'Clave-recuperada-22'});await request(env,'reset',{token,password:'Clave-recuperada-33'},'',410);
+ await request(env,'login',{...credentials('ana'),password:'Clave-recuperada-22'});
+ const expired=(await request(env,'reset-link',{id:anaId},admin.cookie)).data.path.split('/').pop();await db.collection('password_resets').updateOne({user_id:anaId,status:'Enviada'},{$set:{expires:Date.now()-1}});await request(env,'reset',{token:expired,password:'Clave-vencida-44'},'',410);
+ // Closing one's own account; admins cannot
+ await request(env,'account-deactivate',{password:'x'},admin.cookie,403);
+ const session=await request(env,'login',{...credentials('ana'),password:'Clave-recuperada-22'});await request(env,'account-deactivate',{password:'mal'},session.cookie,403);
+ await request(env,'account-deactivate',{password:'Clave-recuperada-22'},session.cookie);assert.equal((await request(env,'me',undefined,session.cookie)).data.user,null);
+ await request(env,'login',{...credentials('ana'),password:'Clave-recuperada-22'},'',403);
+});

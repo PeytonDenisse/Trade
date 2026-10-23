@@ -13,8 +13,16 @@ type Def = { key: string; fields: Record<string, object>; optional?: string[]; u
 export const collections: Record<string, Def> = {
   users: {
     key: "id",
-    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: bool },
+    // photo: avatar file id; created_at: ISO date of registration (older accounts have none).
+    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: bool, photo: optStr, created_at: optStr },
+    optional: ["photo", "created_at"],
     unique: [{ email: 1 }],
+  },
+  password_resets: {
+    key: "id",
+    // Solicitada (the person asked) → Enviada (admin issued a link; only its hash is kept) → Usada.
+    fields: { id: str, user_id: str, status: str, requested: str, token_hash: optStr, expires: { bsonType: ["number", "null"] }, issued_by: optStr },
+    index: [{ user_id: 1, status: 1 }, { token_hash: 1 }],
   },
   sessions: {
     key: "token",

@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Plus,Wrench,UserRound,Check,LogOut,Briefcase,ClipboardList,Camera,ChevronLeft} from 'lucide-react';
+import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Plus,Wrench,UserRound,Briefcase,ClipboardList,Camera,ChevronLeft} from 'lucide-react';
 import {trades,isActive,tradesOf} from '../lib/rules';
 import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../components/trade/marketing';
 import {ProfilePage} from '../components/trade/profile';
@@ -13,6 +13,9 @@ import {MyRequests,RequestJourney} from '../components/trade/request-journey';
 import {AdminReview} from '../components/trade/admin-demo';
 import {pathFor,parsePath} from '../lib/routes';
 import {FeedbackProvider,useToast} from '../components/feedback/feedback-provider';
+import {AccountMenu} from '../components/account/account-menu';
+import {AccountPage} from '../components/account/account-page';
+import {ForgotPage,ResetPage} from '../components/account/password-recovery';
 
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
 async function api(path:string,data?:any){const r=await fetch('/api/'+path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const d:any=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo completar la operación.');return d}
@@ -57,6 +60,7 @@ const [catalogQuery,setCatalogQuery]=useState('');
 // Provider the client is asking directly from their profile; null means open to all.
 const [requestTarget,setRequestTarget]=useState<{id:string;name:string;trades:string[]}|null>(null);
 const [people,setPeople]=useState<any[]>([]);
+const [resetToken,setResetToken]=useState('');
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
 // The provider's own trade can't be requested; an empty trade means the client chooses.
 function startRequest(trade='',target:{id:string;name:string;trades:string[]}|null=null){setRequestTrade(trade);setRequestTarget(target);if(user)go('create');else{setAuthDestination('create');go('login')}}
@@ -82,6 +86,7 @@ async function openPath(pathname:string,u:any,app:any){
     if(!u&&privatePages.includes(r.page)){setAuthDestination(target);go('login',u,app);return}
     go(target,u,app);
     if(r.trade)setFilter(r.trade);
+    if(r.token)setResetToken(r.token);
     if(r.providerId)setProfile(await api('providers/'+r.providerId));
     if(r.requestId)await detail(r.requestId);
   }catch(e:any){setError(e.message)}
@@ -98,6 +103,7 @@ function go(p:string,u:any=user,app:any=application){
   setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setJustPublishedId('');setError('');
   if(wasMobileMenuOpen)window.requestAnimationFrame(()=>window.document.getElementById('main-content')?.focus({preventScroll:true}));
 }
+function signedOut(){setUser(null);setApplication(null);go('explore',null,null)}
 async function act(fn:()=>Promise<any>){setError('');try{await fn()}catch(e:any){setError(e.message)}}
 async function detail(id:string){setSelected(await api('requests/'+id))}
 async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();toast(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.'} as Record<string,string>)[path]||'Cambio guardado.')}
@@ -105,7 +111,7 @@ async function change(path:string,data:any){await api(path,data);await detail(se
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
 const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
 // Browser address for the current screen (design PDF 10.1); Back and shared links use it.
-const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='home'?(selected?view:'home'):page,trade:page==='explore'?filter:undefined,providerId:profile?.id,requestId:selected?.id});
+const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='home'?(selected?view:'home'):page,trade:page==='explore'?filter:undefined,providerId:profile?.id,requestId:selected?.id,token:resetToken});
 useEffect(()=>{if(!applyingUrl.current&&window.location.pathname!==path)window.history.pushState(null,'',path)},[path]);
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
 const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
@@ -117,7 +123,7 @@ return <div className="shell public-shell">
     {nav.map(([key,label,Icon])=>key==='group'?<span key={label} className="nav-group-label">{label}</span>:<button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination('');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
     {providerLink&&<button className="mobile-offer" onClick={()=>go(providerLink.page)}>{providerLink.label}</button>}
   </nav>
-  <div className="site-account">{user?<><span className="account-name"><span className="avatar">{user.name[0]}</span><b>{user.name}</b></span><button className="icon-button logout-button" aria-label="Cerrar sesión" onClick={()=>act(async()=>{await api('logout',{});setUser(null);setApplication(null);go('explore')})}><LogOut size={19}/><span>Cerrar sesión</span></button></>:<button className="secondary" onClick={()=>{setAuthDestination('');go('login')}}>Iniciar sesión</button>}
+  <div className="site-account">{user?<AccountMenu user={user} role={role} onAccount={()=>go('account')} onProfile={application?.status==='Aprobada'?()=>act(async()=>{go('explore');setProfile(await api('providers/'+user.id));window.scrollTo({top:0})}):undefined} onLogout={()=>act(async()=>{await api('logout',{});signedOut()})}/>:<button className="secondary" onClick={()=>{setAuthDestination('');go('login')}}>Iniciar sesión</button>}
     <button ref={menuToggle} className="menu-toggle icon-button" aria-label={menuOpen?'Cerrar menú':'Abrir menú'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X/>:<Menu/>}</button>
   </div>
 </div></header>
@@ -138,7 +144,7 @@ return <div className="shell public-shell">
 <HowItWorks onExplore={focusCatalog} onGuide={()=>{go('guide');window.scrollTo({top:0})}}/>
 </>}
 {profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrades={ownTrades} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(tradesOf(profile).find(t=>!ownTrades.includes(t))||'',{id:profile.id,name:profile.name,trades:tradesOf(profile)})}/>}
-{['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
+{['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onForgot={()=>go('forgot')} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
 {view==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
   photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
   documentUpload={<Upload kind="document" label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
@@ -170,6 +176,15 @@ return <div className="shell public-shell">
 />}
 {view==='admin'&&<AdminReview items={items} people={people} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}} onSetActive={async(kind,id,active)=>{await api(kind==='account'?'account-active':'provider-active',{id,active});await load()}}/>}
 
+{page==='account'&&user&&<AccountPage key={user.id} user={user}
+  photoUpload={<Upload kind="avatar" label={user.photo?'Cambiar foto':'Subir foto'} onDone={async(id:string)=>{await api('account',{photo:id});await me();toast('Foto actualizada.')}}/>}
+  onRemovePhoto={async()=>{await api('account',{photo:null});await me()}}
+  onSaveName={async name=>{await api('account',{name});await me()}}
+  onChangePassword={(current,password)=>api('account-password',{current,password})}
+  onDeactivate={async password=>{await api('account-deactivate',{password});signedOut();toast('Tu cuenta quedó desactivada.','info')}}
+/>}
+{page==='forgot'&&<ForgotPage onBack={()=>go('login')} onSubmit={async email=>(await api('forgot',{email})).message}/>}
+{page==='reset'&&<ResetPage token={resetToken} onCheck={token=>api('reset/'+encodeURIComponent(token))} onSubmit={async(token,password)=>{await api('reset',{token,password})}} onLogin={()=>{setResetToken('');go('login')}}/>}
 {page==='guide'&&<GuidePage onExplore={()=>{go('explore');window.requestAnimationFrame(focusCatalog)}}/>}
 </main><footer className="site-footer">
   <div><a className="brand" href="/"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a><p>Hogares más nuestros,<br/>un oficio a la vez.</p><small>Demostración académica · Sin pagos reales</small></div>

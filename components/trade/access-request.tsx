@@ -9,7 +9,7 @@ type AuthMode = 'login' | 'register';
 type AuthValues = { name?: string; email: string; password: string };
 type AuthField = keyof AuthValues;
 
-function AuthCard({ mode, onSubmit }: { mode: AuthMode; onSubmit: (mode: AuthMode, values: AuthValues) => Promise<void> }) {
+function AuthCard({ mode, onSubmit, onForgot }: { mode: AuthMode; onSubmit: (mode: AuthMode, values: AuthValues) => Promise<void>; onForgot?: () => void }) {
   const id = useId();
   const [values, setValues] = useState({ name: '', email: '', password: '' });
   const [errors, setErrors] = useState<Partial<Record<AuthField, string>>>({});
@@ -65,6 +65,7 @@ function AuthCard({ mode, onSubmit }: { mode: AuthMode; onSubmit: (mode: AuthMod
           {field === 'password' && <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <EyeOff size={19}/> : <Eye size={19}/>}</button>}
         </div>
         {field === 'password' && mode === 'register' && <small id={id + '-password-help'}>Mínimo 10 caracteres.</small>}
+        {field === 'password' && mode === 'login' && onForgot && <button type="button" className="text-button forgot-link" onClick={onForgot}>¿Olvidaste tu contraseña?</button>}
         {errors[field] && <p className="field-error" id={id + '-' + field + '-error'} role="alert">{errors[field]}</p>}
       </div>)}
       <button type="submit" className="primary access-submit" disabled={busy}>{busy ? 'Enviando…' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'} <ArrowRight size={18}/></button>
@@ -72,12 +73,12 @@ function AuthCard({ mode, onSubmit }: { mode: AuthMode; onSubmit: (mode: AuthMod
   </section>;
 }
 
-export function AccessPage({ onSubmit, onExplore }: {
-  onSubmit: (mode: AuthMode, values: AuthValues) => Promise<void>; onExplore: () => void;
+export function AccessPage({ onSubmit, onExplore, onForgot }: {
+  onSubmit: (mode: AuthMode, values: AuthValues) => Promise<void>; onExplore: () => void; onForgot?: () => void;
 }) {
   return <div className="access-page">
     <section className="access-intro"><div><p className="eyebrow">BIENVENIDO A TRADE</p><h1>Tu próximo proyecto <em>empieza aquí</em></h1><p>Encuentra profesionales de oficios, revisa su experiencia y recibe cotizaciones para tu hogar.</p><button className="secondary" onClick={onExplore}>Explorar profesionales <ArrowRight size={18}/></button></div><figure><RemoteImage src={designImages.plumbing} alt="Trabajo de plomería, fotografía ilustrativa" width={650} height={380}/><figcaption>Imagen ilustrativa</figcaption></figure></section>
-    <div className="access-grid"><AuthCard mode="login" onSubmit={onSubmit}/><AuthCard mode="register" onSubmit={onSubmit}/></div>
+    <div className="access-grid"><AuthCard mode="login" onSubmit={onSubmit} onForgot={onForgot}/><AuthCard mode="register" onSubmit={onSubmit}/></div>
   </div>;
 }
 
