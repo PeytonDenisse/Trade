@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Plus,Wrench,UserRound,Check,LogOut,Briefcase,ClipboardList,Camera,ChevronLeft} from 'lucide-react';
-import {trades} from '../lib/rules';
+import {trades,isActive} from '../lib/rules';
 import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../components/trade/marketing';
 import {ProfilePage} from '../components/trade/profile';
 import {AccessPage,CreateRequestPage,PublishedNotice} from '../components/trade/access-request';
@@ -27,7 +27,8 @@ export default function Home(){
 const [menuOpen,setMenuOpen]=useState(false);
 const [justPublishedId,setJustPublishedId]=useState('');
 const [openingId,setOpeningId]=useState('');
-const [authDestination,setAuthDestination]=useState('explore');
+// Where to go after login/registration; empty means the role start page (Mi inicio).
+const [authDestination,setAuthDestination]=useState('');
 const loadSequence=useRef(0);
 const menuToggle=useRef<HTMLButtonElement>(null);
 const navigation=useRef<HTMLElement>(null);
@@ -48,15 +49,17 @@ function focusCatalog(){setProfile(null);setPage('explore');window.requestAnimat
 function selectTrade(value:string){setFilter(value);go('explore');window.requestAnimationFrame(focusCatalog)}
 const [user,setUser]=useState<any>(null),[application,setApplication]=useState<any>(null),[page,setPage]=useState('explore'),[providers,setProviders]=useState<any[]>([]),[filter,setFilter]=useState(''),[items,setItems]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[profile,setProfile]=useState<any>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[photo,setPhoto]=useState(''),[document,setDocument]=useState('');
 const [requestTrade,setRequestTrade]=useState('');
+const [people,setPeople]=useState<any[]>([]);
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
 // The provider's own trade can't be requested; an empty trade means the client chooses.
 function startRequest(trade=''){setRequestTrade(trade);if(user)go('create');else{setAuthDestination('create');go('login')}}
 const ownTrade=application&&application.status!=='Rechazada'?application.trade:'';
-async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(page==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(page)){const result=await api('requests?scope='+page);if(sequence===loadSequence.current)setItems(page==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}if(page==='admin'){const result=await api('applications');if(sequence===loadSequence.current)setItems(result)}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
+async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(page==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(page)){const result=await api('requests?scope='+page);if(sequence===loadSequence.current)setItems(page==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}if(page==='admin'){const [result,users]=await Promise.all([api('applications'),api('users')]);if(sequence===loadSequence.current){setItems(result);setPeople(users)}}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
 useEffect(()=>{me().then(d=>{if(d.user)go('home')}).catch(e=>setError(e.message))},[]);useEffect(()=>{load()},[page,filter]);
 function go(p:string){
   const wasMobileMenuOpen=menuOpen;
-  loadSequence.current++;
+  // Staying on the same page starts no new load, so the current one must be allowed to finish.
+  if(p!==page)loadSequence.current++;
   setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setJustPublishedId('');setError('');setNotice('');
   if(wasMobileMenuOpen)window.requestAnimationFrame(()=>window.document.getElementById('main-content')?.focus({preventScroll:true}));
 }
@@ -65,8 +68,7 @@ async function detail(id:string){setSelected(await api('requests/'+id))}
 async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();setNotice(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.'} as Record<string,string>)[path]||'Cambio guardado.')}
 async function enterDemo(role:'cliente'|'proveedor'|'admin'){const account=presentationAccounts[role];await api('login',{email:account.email,password:account.password});await me();setPhoto('');setDocument('');go('home');window.scrollTo({top:0})}
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
-const pendingApplications=items.filter(p=>p.status==='Pendiente'&&(user?.id!=='presentation-admin-login'||p.id==='presentation-provider-login'));
-const nav=[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck],['demo','Recorrido de demo',Briefcase],['mine','Mis solicitudes',ClipboardList],...(application?.status==='Aprobada'?[['group','Como proveedor'],['available','Oportunidades',Briefcase],['assigned','Mis trabajos',Wrench]]:[]),...(user?.role==='admin'?[['group','Administración'],['admin','Revisar proveedores',ShieldCheck]]:[])] as any[];
+const nav=[...(user?[['home','Mi inicio',House]]:[]),['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck],['demo','Recorrido de demo',Briefcase],...(user?.role==='admin'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[]),...(user?.role==='admin'?[['group','Administración'],['admin','Revisar proveedores',ShieldCheck]]:[])] as any[];
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
 const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
 return <div className="shell public-shell">
@@ -74,10 +76,10 @@ return <div className="shell public-shell">
 <header className="site-header"><div className="site-header-inner">
   <a className="brand" href="/" aria-label="Trade inicio"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a>
   <nav ref={navigation} id="site-navigation" aria-label="Navegación principal" className={menuOpen?'site-navigation is-open':'site-navigation'}>
-    {nav.map(([key,label,Icon])=>key==='group'?<span key={label} className="nav-group-label">{label}</span>:<button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination(key==='mine'?'mine':'explore');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
+    {nav.map(([key,label,Icon])=>key==='group'?<span key={label} className="nav-group-label">{label}</span>:<button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination('');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
     {providerLink&&<button className="mobile-offer" onClick={()=>go(providerLink.page)}>{providerLink.label}</button>}
   </nav>
-  <div className="site-account">{user?<><span className="account-name"><span className="avatar">{user.name[0]}</span><b>{user.name}</b></span><button className="icon-button logout-button" aria-label="Cerrar sesión" onClick={()=>act(async()=>{await api('logout',{});setUser(null);setApplication(null);go('explore')})}><LogOut size={19}/><span>Cerrar sesión</span></button></>:<button className="secondary" onClick={()=>{setAuthDestination('explore');go('login')}}>Iniciar sesión</button>}
+  <div className="site-account">{user?<><span className="account-name"><span className="avatar">{user.name[0]}</span><b>{user.name}</b></span><button className="icon-button logout-button" aria-label="Cerrar sesión" onClick={()=>act(async()=>{await api('logout',{});setUser(null);setApplication(null);go('explore')})}><LogOut size={19}/><span>Cerrar sesión</span></button></>:<button className="secondary" onClick={()=>{setAuthDestination('');go('login')}}>Iniciar sesión</button>}
     <button ref={menuToggle} className="menu-toggle icon-button" aria-label={menuOpen?'Cerrar menú':'Abrir menú'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X/>:<Menu/>}</button>
   </div>
 </div></header>
@@ -97,8 +99,8 @@ return <div className="shell public-shell">
 </section>
 <HowItWorks onExplore={focusCatalog}/>
 </>}
-{profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} ownTrade={ownTrade} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(profile.trade)}/>}
-{['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination);setAuthDestination('explore')}}/>}
+{profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrade={ownTrade} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(profile.trade)}/>}
+{['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
 {page==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
   photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
   documentUpload={<Upload kind="document" label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
@@ -128,7 +130,7 @@ return <div className="shell public-shell">
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
-{page==='admin'&&<AdminReview items={pendingApplications} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}}/>}
+{page==='admin'&&<AdminReview items={items} people={people} presentationOnly={user?.id==='presentation-admin-login'} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}} onSetActive={async(kind,id,active)=>{await api(kind==='account'?'account-active':'provider-active',{id,active});await load()}}/>}
 {page==='demo'&&<DemoPage onEnter={enterDemo}/>}
 {page==='guide'&&<GuidePage onExplore={()=>{go('explore');window.requestAnimationFrame(focusCatalog)}}/>}
 </main><footer className="site-footer">

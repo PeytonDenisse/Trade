@@ -1,13 +1,14 @@
 'use client';
 import {ArrowRight,Search,ClipboardList,Plus,Wrench,ShieldCheck,UserRound} from 'lucide-react';
 export function RoleHome({role,user,application,onNavigate}:{role:string;user:any;application:any;onNavigate:(page:string)=>void}){
- const approved=application?.status==='Aprobada';
+ const approved=application?.status==='Aprobada'&&application?.active!==false;
+ const deactivated=application?.status==='Aprobada'&&application?.active===false;
  const sections=role==='admin'?[
   {page:'admin',title:'Revisar proveedores',Icon:ShieldCheck,text:'Revisa los datos y la identificación de cada registro. Apruébalo para que pueda cotizar o recházalo para que envíe uno nuevo.'},
  ]:role==='proveedor'?[
-  {page:'apply',title:'Mi perfil',Icon:UserRound,text:approved?'Tu perfil ya está aprobado. Ya puedes enviar cotizaciones.':'Tu registro como proveedor está pendiente. Administración debe aprobarlo antes de que puedas cotizar.'},
+  {page:'apply',title:'Mi perfil',Icon:UserRound,text:deactivated?'Administración desactivó tu perfil de proveedor. No apareces en el catálogo ni puedes cotizar.':approved?'Tu perfil ya está aprobado. Ya puedes enviar cotizaciones.':'Tu registro como proveedor está pendiente. Administración debe aprobarlo antes de que puedas cotizar.'},
   {page:'available',title:'Oportunidades',Icon:ClipboardList,text:'Pedidos de los clientes. Abre uno y envía precio y alcance.',disabled:!approved},
-  {page:'assigned',title:'Mis trabajos',Icon:Wrench,text:'Solo aparecen los servicios donde el cliente aceptó tu cotización. Aquí subes Antes / Después y marcas Terminado.',disabled:!approved},
+  {page:'assigned',title:'Mis trabajos',Icon:Wrench,text:'Solo aparecen los servicios donde el cliente aceptó tu cotización. Aquí subes Antes / Después y marcas Terminado.',disabled:!approved&&!deactivated},
  ]:[
   {page:'explore',title:'Explorar oficios',Icon:Search,text:'Es el catálogo: conoce oficios, perfiles, trabajos y reseñas. Aquí todavía no estás contratando.'},
   {page:'create',title:'Nueva solicitud',Icon:Plus,text:'Publica qué necesitas, el oficio y la fecha. Después puedes adjuntar la foto del problema.'},

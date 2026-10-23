@@ -1,3 +1,7 @@
+// Accounts and provider profiles are active unless an admin sets active:false.
+// Older records without the field count as active.
+export const ACTIVE={active:{$ne:false}} as const;
+export const isActive=(doc:{active?:boolean}|null|undefined)=>!!doc&&doc.active!==false;
 export const trades=['Plomería','Electricidad','Carpintería','Cerrajería','Pintura','Albañilería','Mantenimiento'];
 export function required(v:unknown,label:string,max=2000){if(typeof v!=='string'||!v.trim()||v.length>max)throw new Error(`${label}: completa el campo (máximo ${max} caracteres).`);return v.trim()}
 export function trade(v:unknown){if(!trades.includes(String(v)))throw new Error('Selecciona un oficio válido.');return String(v)}
