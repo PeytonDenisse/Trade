@@ -6,11 +6,11 @@ import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../compo
 import {ProfilePage} from '../components/trade/profile';
 import {AccessPage,CreateRequestPage,PublishedNotice} from '../components/trade/access-request';
 import {RemoteImage} from '../components/trade/remote-image';
-import {MyRequests,RequestJourney} from '../components/trade/request-journey';
-import {ProviderApplication,ProviderWorkspace} from '../components/trade/provider-workflow';
-import {AdminReview,DemoJourney} from '../components/trade/admin-demo';
 import {DemoPage,RoleGuide} from '../components/trade/demo-flow';
 import {RoleHome} from '../components/trade/role-home';
+import {ProviderApplication,ProviderWorkspace} from '../components/trade/provider-workflow';
+import {MyRequests,RequestJourney} from '../components/trade/request-journey';
+import {AdminReview} from '../components/trade/admin-demo';
 import {presentationAccounts} from '../lib/presentation-accounts';
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
 async function api(path:string,data?:any){const r=await fetch('/api/'+path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const d:any=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo completar la operación.');return d}
@@ -128,8 +128,8 @@ return <div className="shell public-shell">
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
-{page==='admin'&&<AdminReview items={items} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}}/>}
-{page==='demo'&&<DemoJourney onEnter={async role=>{await api('demo',{role});const d=await me();go(role==='cliente'?'mine':role==='admin'?'admin':d.application?.status==='Aprobada'?'available':'apply')}}/>}
+{page==='admin'&&<AdminReview items={pendingApplications} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}}/>}
+{page==='demo'&&<DemoPage onEnter={enterDemo}/>}
 {page==='guide'&&<GuidePage onExplore={()=>{go('explore');window.requestAnimationFrame(focusCatalog)}}/>}
 </main><footer className="site-footer">
   <div><a className="brand" href="/"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a><p>Hogares más nuestros,<br/>un oficio a la vez.</p><small>Demostración académica · Sin pagos reales</small></div>
