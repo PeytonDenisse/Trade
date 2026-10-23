@@ -10,8 +10,8 @@ type Provider = {
   experience: string; description: string; works: WorkFile[]; reviews: Review[];
 };
 
-export function ProfilePage({ provider, isOwn, ownTrade, onBack, onRequest }: {
-  provider: Provider; isOwn: boolean; ownTrade: string; onBack: () => void; onRequest: () => void;
+export function ProfilePage({ provider, isOwn, isAdmin, ownTrade, onBack, onRequest }: {
+  provider: Provider; isOwn: boolean; isAdmin: boolean; ownTrade: string; onBack: () => void; onRequest: () => void;
 }) {
   const firstName = provider.name.split(' ')[0];
   const photo = providerImage(provider);
@@ -34,6 +34,7 @@ export function ProfilePage({ provider, isOwn, ownTrade, onBack, onRequest }: {
         <p className="profile-rating"><Star size={19} fill={rating ? 'currentColor' : 'none'}/>{rating ? <><strong>{rating}</strong> ({ratings.length} {ratings.length === 1 ? 'reseña' : 'reseñas'})</> : 'Sin reseñas'}</p>
         <p className="profile-description">{provider.description}</p>
         {isOwn ? <p className="profile-request-note">Este es tu perfil público. Así lo ven los clientes.</p>
+          : isAdmin ? <p className="profile-request-note">Vista de administración: las cuentas de administración no piden cotizaciones.</p>
           : ownTrade === provider.trade ? <p className="profile-request-note">{provider.trade} es tu propio oficio, así que no puedes pedir cotizaciones de este oficio.</p>
           : <><button className="primary" onClick={onRequest}>Pedir cotización de {provider.trade} <ArrowRight size={18}/></button>
             <p className="profile-request-note">Describes tu proyecto una vez y lo reciben {firstName} y los demás profesionales aprobados de {provider.trade}. Tú eliges la cotización que prefieras.</p></>}
