@@ -1,4 +1,15 @@
 /* Layout based on the approved desktop/mobile screens in design/mockups. */
+.location-picker,.service-location { margin: 24px 0; padding: 20px; border: 1px solid var(--border); border-radius: 14px; }
+.location-picker h3,.service-location h3 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.location-picker h3 small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.location-picker p,.service-location p { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.service-map { height: 320px; width: 100%; border-radius: 12px; margin: 14px 0; z-index: 0; isolation: isolate; background: #f4e9de; }
+.location-actions,.location-coordinates { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.location-coordinates { padding-top: 16px; }
+.location-coordinates .field { flex: 1; min-width: 130px; }
+.location-status { color: var(--muted); }
+.service-location > a { display: inline-flex; align-items: center; gap: 8px; }
+@media(max-width:560px) { .location-picker,.service-location { padding: 14px; } .service-map { height: 280px; } }
 .session-feedback { max-width: 720px; margin: 70px auto; padding: 32px; text-align: center; }
 .session-feedback > svg { color: var(--action); width: 30px; height: 30px; }
 .session-feedback h1 { font-size: clamp(24px,4vw,34px); }

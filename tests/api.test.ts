@@ -7,11 +7,44 @@ import {ensureCollections} from '../db/collections';
 import {handle} from '../lib/api';
 import {price,stars,date} from '../lib/rules';
 import {preparePresentation,presentationIds} from '../lib/presentation-data';
+import {serviceLocation,directionsUrl} from '../lib/service-location';
 async function fixture(){const server=await MongoMemoryServer.create();const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
 const records:any[]=[];
 async function request(env:any,path:string,data?:any,cookie='',expected=200,extra:any={}){const headers:any={...extra};if(cookie)headers.cookie=cookie;let body:any;if(data instanceof FormData)body=data;else if(data!==undefined){body=JSON.stringify(data);headers['content-type']='application/json'}const r=await handle(new Request('https://trade.test/api/'+path,{method:data===undefined?'GET':'POST',headers,body}),env);const result=await r.json();assert.equal(r.status,expected,`${path}: ${JSON.stringify(result)}`);return {data:result as any,cookie:r.headers.get('set-cookie')?.split(';')[0]||cookie}}
 const credentials=(name:string)=>({name,email:name+'@example.test',password:'Test-password-unique-42'});
 const png=readFileSync('public/demo-assets/antes.png');
+
+test('Mapa opcional: compatibilidad, coordenadas válidas y privacidad hasta la asignación',async(t)=>{
+ const {db,env,close}=await fixture();t.after(close);
+ await preparePresentation(db,{profile:png,document:png,before:png,after:png,trades:{'Plomería':png}});
+ const previous=await db.collection('requests').findOne({id:'presentation-active'});
+ const user=await request(env,'register',credentials('cliente-mapa'));
+ const worker=await request({...env,DEMO_ENABLED:'true'},'demo',{role:'proveedor'});
+ const outsider=await request(env,'register',credentials('externo-mapa'));
+ const usersBefore=await db.collection('users').find({}).sort({id:1}).toArray();
+ const input={trade:'Plomería',description:'Servicio con mapa',date:'2099-01-01'};
+ const point={lat:21.122,lng:-101.68,address:'Puerta de prueba 458'};
+ const rid=(await request(env,'requests',{...input,location:point},user.cookie,201)).data.id;
+ assert.deepEqual((await request(env,'requests/'+rid,undefined,user.cookie)).data.location,point);
+ const available=(await request(env,'requests?scope=available',undefined,worker.cookie)).data;
+ assert.ok(available.some((r:any)=>r.id===rid));assert.ok(available.every((r:any)=>!Object.hasOwn(r,'location')));
+ const before=(await request(env,'requests/'+rid,undefined,worker.cookie)).data;
+ assert.equal(before.location,undefined);assert.equal(before.locationShared,true);
+ await request(env,'requests/'+rid,undefined,outsider.cookie,403);
+ await request(env,'quote',{request:rid,price:950,description:'Reparación de conexión'},worker.cookie,201);
+ const detail=(await request(env,'requests/'+rid,undefined,user.cookie)).data;
+ await request(env,'accept',{id:detail.quotes[0].id},user.cookie);
+ assert.deepEqual((await request(env,'requests/'+rid,undefined,worker.cookie)).data.location,point);
+ assert.deepEqual((await request(env,'requests?scope=assigned',undefined,worker.cookie)).data.find((r:any)=>r.id===rid).location,point);
+ const legacy=(await request(env,'requests',input,user.cookie,201)).data.id;
+ assert.equal((await request(env,'requests/'+legacy,undefined,user.cookie)).data.location,undefined);
+ assert.deepEqual(await db.collection('requests').findOne({id:'presentation-active'}),previous);
+ assert.deepEqual(await db.collection('users').find({}).sort({id:1}).toArray(),usersBefore);
+ for(const location of [{lat:91,lng:0},{lat:0,lng:181},{lat:'21',lng:0},[],{lat:0,lng:0,address:{$ne:null}},{lat:0,lng:0,address:'x'.repeat(301)}])await request(env,'requests',{...input,location},user.cookie,400);
+ assert.equal(serviceLocation(undefined),undefined);assert.equal(serviceLocation(null),undefined);
+ assert.deepEqual(serviceLocation({lat:0,lng:0,address:'  referencia  ',unsafe:'omitido'}),{lat:0,lng:0,address:'referencia'});
+ assert.equal(new URL(directionsUrl(point)).searchParams.get('destination'),'21.122,-101.68');
+});
 async function upload(env:any,cookie:string,kind:string,rid?:string,expected=201){const f=new FormData();f.set('file',new File([png],'demo.png',{type:'image/png'}));f.set('kind',kind);if(rid)f.set('request',rid);return request(env,'upload',f,cookie,expected)}
 function ok(hu:string,scenario:string){records.push({historia:hu,escenario:scenario,esperado:'Operación permitida con datos persistidos; restricciones respetadas',obtenido:'Aserciones correctas',estado:'aprobado'})}
 
