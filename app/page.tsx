@@ -1,9 +1,10 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {Menu,X,House,Search,ShieldCheck,ArrowRight,Plus,Wrench,UserRound,Briefcase,ClipboardList,Camera,ChevronLeft,CheckCircle2,LockKeyhole} from 'lucide-react';
+import {api,readApiResponse} from '../lib/http-client';
+import {Menu,X,House,Search,ShieldCheck,ArrowRight,Plus,Wrench,UserRound,RefreshCw,Briefcase,ClipboardList,Camera,ChevronLeft,CheckCircle2,LockKeyhole} from 'lucide-react';
 import {trades,isActive,tradesOf} from '../lib/rules';
 import {TradesContext} from '../components/trade/trades-context';
-import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../components/trade/marketing';
+import {Hero,PopularTrades,ProfessionalCard,HomeBanner,GuidePage} from '../components/trade/marketing';
 import {ProfilePage} from '../components/trade/profile';
 import {AccessPage,CreateRequestPage,PublishedNotice} from '../components/trade/access-request';
 import {RemoteImage} from '../components/trade/remote-image';
@@ -19,7 +20,6 @@ import {AccountPage} from '../components/account/account-page';
 import {ForgotPage,ResetPage} from '../components/account/password-recovery';
 
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
-async function api(path:string,data?:any){const r=await fetch('/api/'+path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const d:any=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo completar la operación.');return d}
 function Upload({kind,request,currentId,onDone,label}:{kind:'photo'|'document'|'problem'|'before'|'after'|'avatar';request?:string;currentId?:string;onDone:(id:string)=>void|Promise<void>;label:string}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const [selectedName,setSelectedName]=useState('');
@@ -29,7 +29,7 @@ function Upload({kind,request,currentId,onDone,label}:{kind:'photo'|'document'|'
     const f=e.target.files?.[0];if(!f)return;setError('');setSelectedName(f.name);
     if(!['image/png','image/jpeg','image/webp'].includes(f.type)){setError('Selecciona una imagen PNG, JPG o WebP.');setSelectedName('');e.target.value='';return}
     if(f.size===0||f.size>5*1024*1024){setError('La imagen debe contener datos y pesar como máximo 5 MB.');setSelectedName('');e.target.value='';return}
-    setBusy(true);try{const d=new FormData();d.set('file',f);d.set('kind',kind);if(request)d.set('request',request);const r=await fetch('/api/upload',{method:'POST',body:d});const j:{id?:string;error?:string}=await r.json();if(!r.ok||!j.id)throw new Error(j.error||'No se pudo subir la imagen.');await onDone(j.id);setUploaded({id:j.id,name:f.name})}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo subir la imagen.')}finally{setBusy(false);setSelectedName('');e.target.value=''}
+    setBusy(true);try{const d=new FormData();d.set('file',f);d.set('kind',kind);if(request)d.set('request',request);const r=await fetch('/api/upload',{method:'POST',body:d});const j=await readApiResponse<{id?:string}>(r);if(!j.id)throw new Error('No se pudo subir la imagen.');await onDone(j.id);setUploaded({id:j.id,name:f.name})}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo subir la imagen.')}finally{setBusy(false);setSelectedName('');e.target.value=''}
   }}/></label>{busy&&<p className="upload-progress" role="status">Subiendo {selectedName}…</p>}{shown&&<div className="upload-confirmation" role="status">{kind==='document'?<LockKeyhole size={21} aria-hidden="true"/>:<RemoteImage src={'/api/files/'+shown.id} alt="Vista previa de la imagen cargada"/>}<span><strong>Imagen cargada</strong>{shown.name&&<small title={shown.name}>{shown.name}</small>}{kind==='document'&&<small>Documento privado</small>}</span><CheckCircle2 size={19} aria-hidden="true"/></div>}{error&&<p className="field-error" role="alert">{error}</p>}</div>
 }
 export default function Page(){return <FeedbackProvider><Home/></FeedbackProvider>}
@@ -38,6 +38,9 @@ const toast=useToast();
 const [menuOpen,setMenuOpen]=useState(false);
 const [justPublishedId,setJustPublishedId]=useState('');
 const [openingId,setOpeningId]=useState('');
+const [sessionState,setSessionState]=useState<'loading'|'ready'|'error'>('loading');
+const [sessionError,setSessionError]=useState('');
+const [refreshing,setRefreshing]=useState(false),[refreshVersion,setRefreshVersion]=useState(0);
 // Where to go after login/registration; empty means the role start page (Mi inicio).
 const [authDestination,setAuthDestination]=useState('');
 const loadSequence=useRef(0);
@@ -80,7 +83,7 @@ const view=page==='home'?homeFor(user,application):page;
 const catalogNeedle=catalogQuery.trim().toLowerCase();
 const shownProviders=catalogNeedle?providers.filter(p=>[p.name,p.zone].some((v:any)=>String(v||'').toLowerCase().includes(catalogNeedle))):providers;
 async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(view==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(view)){const result=await api('requests?scope='+view);if(sequence===loadSequence.current)setItems(view==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
-useEffect(()=>{load()},[view,filter]);
+useEffect(()=>{if(sessionState==='ready')void load()},[view,filter,sessionState]);
 // Pages that need a session; visitors who open them by link are sent to log in first.
 const privatePages=['home','mine','create','apply','available','assigned','account','saved','admin'];
 // True while the address is being turned into screen state, so that state is not pushed back.
@@ -101,8 +104,17 @@ async function openPath(pathname:string,u:any,app:any,names:string[]=tradeNames)
   }catch(e:any){setError(e.message)}
   finally{window.requestAnimationFrame(()=>{applyingUrl.current=false})}
 }
-useEffect(()=>{Promise.all([me(),api('trades').catch(()=>trades),api('settings').catch(()=>({registrationOpen:true}))]).then(([d,names,settings])=>{setTradeNames(names);setSignupOpen(settings.registrationOpen);return openPath(window.location.pathname,d.user,d.application,names)}).catch(e=>{setError(e.message);applyingUrl.current=false})},[]);
-useEffect(()=>{const onPop=()=>openPath(window.location.pathname,user,application);window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop)},[user,application]);
+async function restoreSession(){
+  setSessionState('loading');setSessionError('');applyingUrl.current=true;
+  try{
+    const [d,names,settings]=await Promise.all([api('me'),api('trades').catch(()=>trades),api('settings').catch(()=>({registrationOpen:true}))]);
+    setUser(d.user);setApplication(d.application);setTradeNames(names);setSignupOpen(settings.registrationOpen);
+    await openPath(window.location.pathname,d.user,d.application,names);
+    setSessionState('ready');
+  }catch(e){setSessionError(e instanceof Error?e.message:'No se pudo recuperar la sesión.');setSessionState('error')}
+}
+useEffect(()=>{void restoreSession()},[]);
+useEffect(()=>{const onPop=()=>{if(sessionState==='ready')void openPath(window.location.pathname,user,application)};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop)},[user,application,sessionState]);
 function go(p:string,u:any=user,app:any=application){
   // Signed-in people reach their working page as Mi inicio; visitors have no Mi inicio.
   if(u&&(p==='admin'||p===homeFor(u,app)))p='home';
@@ -118,12 +130,24 @@ async function detail(id:string){setSelected(await api('requests/'+id))}
 async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();toast(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.',cancel:'Solicitud cancelada.',report:'Reporte enviado. Administración revisará el caso y verás su decisión en la solicitud.'} as Record<string,string>)[path]||'Cambio guardado.')}
 
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
-const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
+const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
 // Browser address for the current screen (design PDF 10.1); Back and shared links use it.
 const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='home'?(selected?view:'home'):page,trade:page==='explore'?filter:undefined,providerId:profile?.id,requestId:selected?.id,token:resetToken,adminTab,personId});
-useEffect(()=>{if(!applyingUrl.current&&window.location.pathname!==path)window.history.pushState(null,'',path)},[path]);
+useEffect(()=>{if(sessionState==='ready'&&!applyingUrl.current&&window.location.pathname!==path)window.history.pushState(null,'',path)},[path,sessionState]);
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
 const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
+async function refreshCurrent(){
+  if(refreshing||loading)return;
+  setRefreshing(true);setError('');
+  try{
+    await me();await load();
+    if(selected)await detail(selected.id);
+    if(profile)setProfile(await api('providers/'+profile.id));
+    if(view==='admin')setRefreshVersion(v=>v+1);
+  }catch(e){setError(e instanceof Error?e.message:'No se pudo actualizar. Intenta de nuevo.')}
+  finally{setRefreshing(false)}
+}
+if(sessionState!=='ready')return <div className="shell public-shell"><header className="site-header"><div className="site-header-inner"><span className="brand"><House aria-hidden="true"/>Trade</span></div></header><main className="session-feedback" aria-busy={sessionState==='loading'}>{sessionState==='loading'?<><RefreshCw className="is-spinning" aria-hidden="true"/><h1 role="status">Recuperando tu sesión…</h1><p>Estamos preparando tu espacio.</p></>:<><h1>No pudimos recuperar tu sesión</h1><p role="alert">{sessionError}</p><button className="primary" onClick={()=>void restoreSession()}><RefreshCw size={17}/>Reintentar</button></>}</main></div>;
 return <TradesContext.Provider value={tradeNames}><div className="shell public-shell">
 <a className="skip-link" href="#main-content">Ir al contenido</a>
 <header className="site-header"><div className="site-header-inner">
@@ -131,12 +155,13 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
   <nav ref={navigation} id="site-navigation" aria-label="Navegación principal" className={menuOpen?'site-navigation is-open':'site-navigation'}>
     {nav.map(([key,label,Icon])=><button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination('');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
   </nav>
-  <div className="site-account">{user?<AccountMenu user={user} role={role} onAccount={()=>go('account')} onProfile={application?.status==='Aprobada'?()=>act(async()=>{go('explore');setProfile(await api('providers/'+user.id));window.scrollTo({top:0})}):undefined} onLogout={()=>act(async()=>{await api('logout',{});signedOut()})}/>:<button className="secondary" onClick={()=>{setAuthDestination('');go('login')}}>Iniciar sesión</button>}
+  <div className="site-account">{user?<AccountMenu user={user} role={role} onAccount={()=>go('account')} onGuide={()=>{go('guide');window.scrollTo({top:0})}} onProfile={application?.status==='Aprobada'?()=>act(async()=>{go('explore');setProfile(await api('providers/'+user.id));window.scrollTo({top:0})}):undefined} onLogout={()=>act(async()=>{await api('logout',{});signedOut()})}/>:<button className="secondary" onClick={()=>{setAuthDestination('');go('login')}}>Iniciar sesión</button>}
     <button ref={menuToggle} className="menu-toggle icon-button" aria-label={menuOpen?'Cerrar menú':'Abrir menú'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X/>:<Menu/>}</button>
   </div>
 </div></header>
 <div className="main"><main id="main-content" tabIndex={-1}>
 <div className="site-context"><span>Servicios para tu hogar y negocio</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}</div>
+{['explore','home','mine','available','assigned','apply','account','admin'].includes(page)&&<div className="page-refresh"><button className="secondary" disabled={refreshing||loading} onClick={()=>void refreshCurrent()}><RefreshCw size={16} className={refreshing?'is-spinning':''}/>{refreshing?'Actualizando…':'Actualizar'}</button><span role="status">{refreshing?'Consultando los cambios más recientes.':''}</span></div>}
 {error&&<div className="error" role="alert">{error}</div>}
 
 
@@ -149,7 +174,7 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
   <div className="catalog-meta"><span>{shownProviders.length} {shownProviders.length===1?'perfil aprobado':'perfiles aprobados'}{catalogQuery.trim()?` para «${catalogQuery.trim()}»`:''}</span><span>Los perfiles de demostración y las imágenes ilustrativas están identificados.</span></div>
   {loading?<p role="status">Buscando profesionales…</p>:shownProviders.length?<div className={filter||catalogQuery?'professional-grid is-filtered':'professional-grid'}>{shownProviders.map(p=><ProfessionalCard key={p.id} provider={p} onOpen={()=>act(async()=>{setProfile(await api('providers/'+p.id));window.scrollTo({top:0})})}/>)}</div>:<div className="empty"><Wrench size={36}/><h3>{catalogQuery.trim()?'Nadie coincide con tu búsqueda':'No hay profesionales de este oficio'}</h3><p>{catalogQuery.trim()?'Prueba con otro nombre o zona.':'Explora otros oficios o vuelve más tarde.'}</p><button className="secondary" onClick={()=>{setFilter('');setCatalogQuery('')}}>Ver todos los profesionales <ArrowRight size={16}/></button></div>}
 </section>
-<HowItWorks onExplore={focusCatalog} onGuide={()=>{go('guide');window.scrollTo({top:0})}}/>
+<HomeBanner onExplore={focusCatalog}/>
 </>}
 {profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrades={ownTrades} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(tradesOf(profile).find(t=>!ownTrades.includes(t))||'',{id:profile.id,name:profile.name,trades:tradesOf(profile)})}/>}
 {['login','register'].includes(page)&&<AccessPage signupOpen={signupOpen} onExplore={focusCatalog} onForgot={()=>go('forgot')} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
@@ -184,7 +209,7 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
-{view==='admin'&&user&&<AdminPortal api={api} tab={adminTab} personId={personId} me={user.id} onTab={tab=>{setAdminTab(tab);setPersonId('');window.scrollTo({top:0})}} onPerson={id=>{setPersonId(id);window.scrollTo({top:0})}} onTradesChanged={()=>api('trades').then(setTradeNames)}/>}
+{view==='admin'&&user&&<AdminPortal key={refreshVersion} api={api} tab={adminTab} personId={personId} me={user.id} onTab={tab=>{setAdminTab(tab);setPersonId('');window.scrollTo({top:0})}} onPerson={id=>{setPersonId(id);window.scrollTo({top:0})}} onTradesChanged={()=>api('trades').then(setTradeNames)}/>}
 
 {page==='account'&&user&&<AccountPage key={user.id} user={user}
   photoUpload={<Upload kind="avatar" label={user.photo?'Cambiar foto':'Subir foto'} onDone={async(id:string)=>{await api('account',{photo:id});await me();toast('Foto actualizada.')}}/>}

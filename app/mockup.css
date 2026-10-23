@@ -1,4 +1,15 @@
 /* Layout based on the approved desktop/mobile screens in design/mockups. */
+.session-feedback { max-width: 720px; margin: 70px auto; padding: 32px; text-align: center; }
+.session-feedback > svg { color: var(--action); width: 30px; height: 30px; }
+.session-feedback h1 { font-size: clamp(24px,4vw,34px); }
+.session-feedback p { color: var(--muted); overflow-wrap: anywhere; }
+.page-refresh { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin: 12px 0 22px; }
+.page-refresh button { display: inline-flex; gap: 8px; align-items: center; }
+.page-refresh span { color: var(--muted); font-size: 13px; }
+.is-spinning { animation: trade-spin 1s linear infinite; }
+@keyframes trade-spin { to { transform: rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .is-spinning { animation: none; } }
+@media(max-width:560px) { .page-refresh { align-items: flex-end; flex-direction: column; } }
 .role-home { padding: 22px 0 30px; }
 .role-home-intro { max-width: 760px; color: var(--muted); line-height: 1.7; }
 .role-home-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; margin: 32px 0; }
