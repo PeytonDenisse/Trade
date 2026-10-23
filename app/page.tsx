@@ -12,6 +12,7 @@ import {ProviderApplication,ProviderWorkspace} from '../components/trade/provide
 import {MyRequests,RequestJourney} from '../components/trade/request-journey';
 import {AdminReview} from '../components/trade/admin-demo';
 import {pathFor,parsePath} from '../lib/routes';
+import {FeedbackProvider,useToast} from '../components/feedback/feedback-provider';
 
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
 async function api(path:string,data?:any){const r=await fetch('/api/'+path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const d:any=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo completar la operación.');return d}
@@ -24,7 +25,9 @@ function Upload({kind,request,onDone,label}:any){
     setBusy(true);try{const d=new FormData();d.set('file',f);d.set('kind',kind);if(request)d.set('request',request);const r=await fetch('/api/upload',{method:'POST',body:d});const j:any=await r.json();if(!r.ok)throw new Error(j.error);await onDone(j.id)}catch(e:any){setError(e.message)}finally{setBusy(false);e.target.value=''}
   }}/></label>{error&&<p className="field-error" role="alert">{error}</p>}</div>
 }
-export default function Home(){
+export default function Page(){return <FeedbackProvider><Home/></FeedbackProvider>}
+function Home(){
+const toast=useToast();
 const [menuOpen,setMenuOpen]=useState(false);
 const [justPublishedId,setJustPublishedId]=useState('');
 const [openingId,setOpeningId]=useState('');
@@ -48,7 +51,7 @@ useEffect(()=>{
 },[menuOpen]);
 function focusCatalog(){setProfile(null);setPage('explore');window.requestAnimationFrame(()=>{const catalog=window.document.getElementById('catalogo');catalog?.scrollIntoView({block:'start'});catalog?.focus({preventScroll:true})})}
 function selectTrade(value:string){setFilter(value);go('explore');window.requestAnimationFrame(focusCatalog)}
-const [user,setUser]=useState<any>(null),[application,setApplication]=useState<any>(null),[page,setPage]=useState('explore'),[providers,setProviders]=useState<any[]>([]),[filter,setFilter]=useState(''),[items,setItems]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[profile,setProfile]=useState<any>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[photo,setPhoto]=useState(''),[document,setDocument]=useState('');
+const [user,setUser]=useState<any>(null),[application,setApplication]=useState<any>(null),[page,setPage]=useState('explore'),[providers,setProviders]=useState<any[]>([]),[filter,setFilter]=useState(''),[items,setItems]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[profile,setProfile]=useState<any>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[photo,setPhoto]=useState(''),[document,setDocument]=useState('');
 const [requestTrade,setRequestTrade]=useState('');
 const [catalogQuery,setCatalogQuery]=useState('');
 // Provider the client is asking directly from their profile; null means open to all.
@@ -92,12 +95,12 @@ function go(p:string,u:any=user,app:any=application){
   const wasMobileMenuOpen=menuOpen;
   // Staying on the same page starts no new load, so the current one must be allowed to finish.
   if(p!==page)loadSequence.current++;
-  setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setJustPublishedId('');setError('');setNotice('');
+  setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setJustPublishedId('');setError('');
   if(wasMobileMenuOpen)window.requestAnimationFrame(()=>window.document.getElementById('main-content')?.focus({preventScroll:true}));
 }
 async function act(fn:()=>Promise<any>){setError('');try{await fn()}catch(e:any){setError(e.message)}}
 async function detail(id:string){setSelected(await api('requests/'+id))}
-async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();setNotice(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.'} as Record<string,string>)[path]||'Cambio guardado.')}
+async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();toast(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.'} as Record<string,string>)[path]||'Cambio guardado.')}
 
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
 const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
@@ -120,7 +123,7 @@ return <div className="shell public-shell">
 </div></header>
 <div className="main"><main id="main-content" tabIndex={-1}>
 <div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}{user&&providerLink&&<button className="text-link" onClick={()=>go(providerLink.page)}>{providerLink.label} <ArrowUpRight size={15}/></button>}</div>
-{error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="notice" role="status"><Check size={18}/>{notice}</div>}
+{error&&<div className="error" role="alert">{error}</div>}
 
 
 {page==='explore'&&!profile&&<>
@@ -141,7 +144,7 @@ return <div className="shell public-shell">
   documentUpload={<Upload kind="document" label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
   onLogin={()=>{setAuthDestination('apply');go('login')}}
   onOpportunities={()=>go('available')}
-  onSubmit={async values=>{await api('apply',{...values,photo,document});await me();setNotice('Tu registro como proveedor quedó pendiente de revisión.')}}
+  onSubmit={async values=>{await api('apply',{...values,photo,document});await me();toast('Tu registro como proveedor quedó pendiente de revisión.')}}
 />}
 {page==='create'&&<CreateRequestPage key={requestTrade+(requestTarget?.id||'')} initialTrade={ownTrades.includes(requestTrade)?'':requestTrade} excludeTrades={ownTrades} target={requestTarget} onClearTarget={()=>setRequestTarget(null)} onSubmit={async(values)=>{const r=await api('requests',{...values,...(requestTarget?{provider:requestTarget.id}:{})});setRequestTarget(null);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
 {view==='mine'&&!selected&&<MyRequests items={items} loading={loading} error={error} openingId={openingId} onOpen={id=>act(async()=>{await detail(id);window.scrollTo({top:0})})} onCreate={()=>startRequest()}/>}
@@ -150,16 +153,16 @@ return <div className="shell public-shell">
   onBack={()=>setSelected(null)}
   onQuote={(price,description)=>change('quote',{request:selected.id,price,description})}
   onFinish={()=>change('finish',{request:selected.id})}
-  renderUpload={kind=><Upload kind={kind} request={selected?.id} label={kind==='before'?'Subir foto · Antes':'Subir foto · Después'} onDone={async()=>{await detail(selected.id);setNotice('Fotografía del trabajo añadida.')}}/>}
+  renderUpload={kind=><Upload kind={kind} request={selected?.id} label={kind==='before'?'Subir foto · Antes':'Subir foto · Después'} onDone={async()=>{await detail(selected.id);toast('Fotografía del trabajo añadida.')}}/>}
 />}
 {selected&&selected.owner===user?.id&&<RequestJourney key={selected.id} request={selected}
   onBack={()=>{setSelected(null);setJustPublishedId('');window.scrollTo({top:0})}}
   onList={()=>{setSelected(null);setJustPublishedId('');window.scrollTo({top:0})}}
   justPublished={selected.id===justPublishedId?<PublishedNotice onViewList={()=>{setSelected(null);setJustPublishedId('')}} hasPhoto={selected.files.some((file:any)=>file.kind==='problem')}>
-    {selected.status==='Activa'&&<Upload kind="problem" request={selected.id} label="Añadir foto del problema (opcional)" onDone={async()=>{await detail(selected.id);setNotice('Foto del problema añadida.')}}/>}
+    {selected.status==='Activa'&&<Upload kind="problem" request={selected.id} label="Añadir foto del problema (opcional)" onDone={async()=>{await detail(selected.id);toast('Foto del problema añadida.')}}/>}
     <small>PNG, JPG o WebP · Máximo 5 MB.</small>
   </PublishedNotice>:undefined}
-  onUpload={selected.id!==justPublishedId&&selected.status==='Activa'?<Upload kind="problem" request={selected.id} label="Adjuntar foto del problema" onDone={async()=>{await detail(selected.id);setNotice('Foto del problema añadida.')}}/>:undefined}
+  onUpload={selected.id!==justPublishedId&&selected.status==='Activa'?<Upload kind="problem" request={selected.id} label="Adjuntar foto del problema" onDone={async()=>{await detail(selected.id);toast('Foto del problema añadida.')}}/>:undefined}
   onAccept={id=>change('accept',{id})}
   onConfirm={()=>change('confirm',{request:selected.id})}
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}

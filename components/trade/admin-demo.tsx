@@ -4,6 +4,7 @@ import {ArrowDown,ArrowRight,ArrowUp,ArrowUpDown,CheckCircle2,ClipboardList,File
 import {RemoteImage} from './remote-image';
 import {fileSrc} from '../../lib/design-images';
 import {tradesOf} from '../../lib/rules';
+import {useConfirm,useToast} from '../feedback/feedback-provider';
 
 type Person={id:string;name:string;email:string;role:string;requests:number;provider_status?:string;active?:boolean;provider_active?:boolean};
 type SetActive=(kind:'account'|'provider',id:string,active:boolean)=>Promise<void>;
@@ -62,7 +63,7 @@ function PeopleDirectory({people,applications,loading,error,onApprove,onReject,o
   const cycle=(key:SortKey)=>setSort(current=>!current||current.key!==key?{key,mode:0}:current.mode+1<sorts[key].modes.length?{key,mode:current.mode+1}:null);
   const [query,setQuery]=useState('');
   const [busyId,setBusyId]=useState('');
-  const [message,setMessage]=useState<{ok:boolean;text:string}|null>(null);
+  const confirm=useConfirm(),toast=useToast();
   const rows=useMemo<Row[]>(()=>{const byId=new Map(applications.map(a=>[a.id,a]));return people.map(person=>{const app=byId.get(person.id);const r:Role=person.role==='admin'?'admin':app?'proveedor':'cliente';return {id:person.id,name:person.name,email:person.email,role:r,status:app?.status,trade:app?tradesOf(app).join(', '):undefined,zone:app?.zone,requests:person.requests,active:person.active!==false,providerActive:person.provider_active!==false}}).sort((a,b)=>Number(b.status==='Pendiente')-Number(a.status==='Pendiente')||a.name.localeCompare(b.name,'es'))},[people,applications]);
   const needle=query.trim().toLowerCase();
   const current=views.find(v=>v.key===view)!;
@@ -70,17 +71,17 @@ function PeopleDirectory({people,applications,loading,error,onApprove,onReject,o
   const sorted=sort?[...shown].sort(sorts[sort.key].modes[sort.mode].cmp):shown;
   const filtered=!!(view||needle);
   const clear=()=>{setView('');setQuery('')};
-  async function run(row:Row,question:string,action:()=>Promise<void>,done:string){
-    if(!window.confirm(question))return;
-    setBusyId(row.id);setMessage(null);
-    try{await action();setMessage({ok:true,text:`${row.name}: ${done}`})}catch(cause){setMessage({ok:false,text:cause instanceof Error?cause.message:'No se pudo guardar el cambio.'})}finally{setBusyId('')}
+  async function run(row:Row,ask:{title:string;body:string;confirmLabel:string;danger?:boolean},action:()=>Promise<void>,done:string){
+    if(!await confirm(ask))return;
+    setBusyId(row.id);
+    try{await action();toast(`${row.name}: ${done}`)}catch(cause){toast(cause instanceof Error?cause.message:'No se pudo guardar el cambio.','error')}finally{setBusyId('')}
   }
-  const approve=(row:Row)=>run(row,`¿Aprobar a ${row.name} como proveedor de ${row.trade}?\n\nSu perfil aparecerá en el catálogo y podrá cotizar. Si aún no revisaste su identificación, usa «Ver registro».`,()=>onApprove(row.id),'registro aprobado. Ya aparece en el catálogo.');
-  const reject=(row:Row)=>run(row,`¿Rechazar el registro de ${row.name}?\n\nNo aparecerá en el catálogo. Podrá enviar un registro nuevo.`,()=>onReject(row.id),'registro rechazado. Podrá enviar uno nuevo.');
-  const toggle=(kind:'account'|'provider',row:Row,active:boolean)=>run(row,kind==='account'
-      ?`¿${active?'Reactivar':'Desactivar'} la cuenta de ${row.name}?\n\n${active?'Podrá volver a iniciar sesión.':'No podrá iniciar sesión y se cerrarán sus sesiones abiertas.'}`
-      :`¿${active?'Reactivar':'Desactivar'} el perfil de proveedor de ${row.name}?\n\n${active?'Volverá a aparecer en el catálogo y podrá cotizar.':'Dejará de aparecer en el catálogo y no podrá cotizar; podrá terminar los trabajos ya asignados.'}`,
-    ()=>onSetActive(kind,row.id,active),`${kind==='account'?'cuenta':'perfil de proveedor'} ${active?'reactivado':'desactivado'}.`);
+  const approve=(row:Row)=>run(row,{title:`¿Aprobar a ${row.name}?`,body:`Aparecerá en el catálogo como proveedor de ${row.trade} y podrá cotizar. Si aún no revisaste su identificación, usa «Ver registro».`,confirmLabel:'Aprobar proveedor'},()=>onApprove(row.id),'registro aprobado. Ya aparece en el catálogo.');
+  const reject=(row:Row)=>run(row,{title:`¿Rechazar el registro de ${row.name}?`,body:'No aparecerá en el catálogo. Podrá enviar un registro nuevo.',confirmLabel:'Rechazar registro',danger:true},()=>onReject(row.id),'registro rechazado. Podrá enviar uno nuevo.');
+  const toggle=(kind:'account'|'provider',row:Row,active:boolean)=>run(row,{title:`¿${active?'Reactivar':'Desactivar'} ${kind==='account'?'la cuenta':'el perfil de proveedor'} de ${row.name}?`,danger:!active,confirmLabel:`${active?'Reactivar':'Desactivar'} ${kind==='account'?'cuenta':'proveedor'}`,body:kind==='account'
+      ?(active?'Podrá volver a iniciar sesión.':'No podrá iniciar sesión y se cerrarán sus sesiones abiertas.')
+      :(active?'Volverá a aparecer en el catálogo y podrá cotizar.':'Dejará de aparecer en el catálogo y no podrá cotizar; podrá terminar los trabajos ya asignados.')},
+    ()=>onSetActive(kind,row.id,active),kind==='account'?`cuenta ${active?'reactivada':'desactivada'}.`:`perfil de proveedor ${active?'reactivado':'desactivado'}.`);
   if(loading)return <div className="admin-feedback" role="status">Cargando personas…</div>;
   if(error)return <div className="admin-feedback error" role="alert">No se pudo cargar el directorio. {error}</div>;
   return <section className="people-directory" aria-label="Directorio de personas">
@@ -89,7 +90,6 @@ function PeopleDirectory({people,applications,loading,error,onApprove,onReject,o
       <label className="people-sort">Ordenar<select value={sort?`${sort.key}:${sort.mode}`:''} onChange={event=>{const [key,mode]=event.target.value.split(':');setSort(key?{key:key as SortKey,mode:Number(mode)}:null)}}><option value="">Predeterminado</option>{(Object.keys(sorts) as SortKey[]).flatMap(key=>sorts[key].modes.map((m,i)=><option key={key+i} value={`${key}:${i}`}>{sorts[key].label}: {m.label}</option>))}</select></label>
       <label>Mostrar<select value={view} onChange={event=>setView(event.target.value as View)}>{views.map(v=><option key={v.key} value={v.key}>{v.label} ({rows.filter(v.match).length})</option>)}</select></label>
     </div>
-    {message&&<p className={message.ok?'notice':'error'} role={message.ok?'status':'alert'}>{message.ok&&<CheckCircle2 size={18}/>}{message.text}</p>}
     <div className="people-summary"><span role="status">Mostrando <strong>{shown.length}</strong> de {rows.length} personas</span>{filtered&&<button type="button" className="text-button" onClick={clear}><X size={15}/> Limpiar filtros</button>}</div>
     {shown.length?<div className="admin-table-wrap"><table className="admin-table people-table"><thead><tr>{(Object.keys(sorts) as SortKey[]).map(key=>{const active=sort?.key===key,mode=active?sorts[key].modes[sort!.mode]:null,next=active?sorts[key].modes[sort!.mode+1]:sorts[key].modes[0];const Icon=!active?ArrowUpDown:sort!.mode%2?ArrowUp:ArrowDown;return <th key={key} scope="col" aria-sort={active?(sort!.mode%2?'descending':'ascending'):'none'}><button type="button" className={active?'sort-button active':'sort-button'} onClick={()=>cycle(key)} title={next?`Ordenar: ${next.label}`:'Quitar orden'}>{sorts[key].label}<Icon size={14} aria-hidden="true"/></button>{mode&&<small className="sort-mode">{mode.label}</small>}</th>})}<th scope="col">Acciones</th></tr></thead><tbody>{sorted.map(row=><tr key={row.id} className={row.status==='Pendiente'?'is-pending':undefined}>
       <td data-label="Persona"><span className="person-cell"><span className="person-initial" aria-hidden="true">{row.name.slice(0,1)}</span><span><strong>{row.name}</strong><small>{row.email}</small></span></span></td>
