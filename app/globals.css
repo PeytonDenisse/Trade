@@ -150,10 +150,6 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 
 /* People directory: quick chips, filter bar and person rows. */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.people-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-.people-chips button { border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 600; color: var(--ink); }
-.people-chips button span { margin-left: 4px; font-size: 12px; color: var(--muted); }
-.people-chips button.active { background: #f5e3d9; border-color: #e6c3b0; color: var(--green); }
 .people-filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr)); gap: 12px; align-items: end; background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
 .people-filters label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .people-filters select, .people-search input { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #fff; color: var(--ink); font-size: 14px; }
@@ -186,3 +182,9 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .row-actions .text-button.danger { color: #9c2f2f; }
 .people-filters { grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(130px, 1fr)); }
 @media (max-width: 760px) { .people-filters { grid-template-columns: 1fr 1fr; } }
+
+/* Simplified directory filters (search + Mostrar) and pending rows. */
+.people-filters { grid-template-columns: minmax(240px, 1fr) minmax(220px, 300px); }
+.people-table tr.is-pending td { background: #fffaf0; }
+.row-actions .small-action { margin: 0; }
+@media (max-width: 760px) { .people-filters { grid-template-columns: 1fr; } }
