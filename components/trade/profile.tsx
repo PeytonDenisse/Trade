@@ -10,9 +10,10 @@ type Provider = {
   experience: string; description: string; works: WorkFile[]; reviews: Review[];
 };
 
-export function ProfilePage({ provider, onBack, onRequest }: {
-  provider: Provider; onBack: () => void; onRequest: () => void;
+export function ProfilePage({ provider, isOwn, ownTrade, onBack, onRequest }: {
+  provider: Provider; isOwn: boolean; ownTrade: string; onBack: () => void; onRequest: () => void;
 }) {
+  const firstName = provider.name.split(' ')[0];
   const photo = providerImage(provider);
   const demo = provider.id.startsWith('catalog-provider-');
   const works = Object.values(provider.works.reduce<Record<string, { request: string; before?: WorkFile; after?: WorkFile }>>((acc, file) => {
@@ -28,12 +29,14 @@ export function ProfilePage({ provider, onBack, onRequest }: {
       <figure className="profile-portrait"><RemoteImage className="profile-photo" src={photo.src} alt={photo.illustrative ? 'Imagen ilustrativa del oficio' : demo ? 'Avatar ficticio del perfil de demostración' : `Fotografía de ${provider.name}`} width={400} height={500}/>{(photo.illustrative || demo) && <figcaption>{demo ? 'Perfil ficticio de demostración' : 'Imagen ilustrativa · No es una fotografía del profesional'}</figcaption>}</figure>
       <div className="profile-summary">
         <span className="verified"><ShieldCheck size={15}/> Perfil aprobado por Trade</span>
-        <p className="approval-note">Aprobación administrativa interna de Trade.</p>
         <h1>{provider.name} <span>· {provider.trade}</span></h1>
         <p className="profile-zone"><MapPin size={18}/>{provider.zone}</p>
         <p className="profile-rating"><Star size={19} fill={rating ? 'currentColor' : 'none'}/>{rating ? <><strong>{rating}</strong> ({ratings.length} {ratings.length === 1 ? 'reseña' : 'reseñas'})</> : 'Sin reseñas'}</p>
         <p className="profile-description">{provider.description}</p>
-        <button className="primary" onClick={onRequest}>Publicar solicitud <ArrowRight size={18}/></button>
+        {isOwn ? <p className="profile-request-note">Este es tu perfil público. Así lo ven los clientes.</p>
+          : ownTrade === provider.trade ? <p className="profile-request-note">{provider.trade} es tu propio oficio, así que no puedes pedir cotizaciones de este oficio.</p>
+          : <><button className="primary" onClick={onRequest}>Pedir cotización de {provider.trade} <ArrowRight size={18}/></button>
+            <p className="profile-request-note">Describes tu proyecto una vez y lo reciben {firstName} y los demás profesionales aprobados de {provider.trade}. Tú eliges la cotización que prefieras.</p></>}
       </div>
       <aside className="profile-facts"><h2>Sobre su trabajo</h2><div><BriefcaseBusiness size={22}/><span><strong>Experiencia</strong>{provider.experience}</span></div><div><MapPin size={22}/><span><strong>Zona de servicio</strong>{provider.zone}</span></div><div><ShieldCheck size={22}/><span><strong>Oficio</strong>{provider.trade}</span></div></aside>
     </section>
