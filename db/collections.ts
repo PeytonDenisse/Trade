@@ -4,6 +4,7 @@ import type { Db } from "mongodb";
 const str = { bsonType: "string" };
 const optStr = { bsonType: ["string", "null"] };
 const num = { bsonType: "number" };
+const optBool = { bsonType: ["bool", "null"] };
 
 type Def = { key: string; fields: Record<string, object>; optional?: string[]; unique?: Record<string, 1>[]; index?: Record<string, 1>[] };
 
@@ -11,7 +12,8 @@ type Def = { key: string; fields: Record<string, object>; optional?: string[]; u
 export const collections: Record<string, Def> = {
   users: {
     key: "id",
-    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str },
+    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: optBool },
+    optional: ["active"],
     unique: [{ email: 1 }],
   },
   sessions: {
@@ -21,7 +23,8 @@ export const collections: Record<string, Def> = {
   },
   providers: {
     key: "id",
-    fields: { id: str, trade: str, experience: str, zone: str, description: str, photo: str, document: str, status: str },
+    fields: { id: str, trade: str, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: optBool },
+    optional: ["active"],
     index: [{ trade: 1, status: 1 }],
   },
   requests: {
@@ -71,6 +74,7 @@ export async function ensureCollections(db: Db, log: (msg: string) => void = () 
     await coll.createIndex({ [def.key]: 1 }, { unique: true });
     for (const keys of def.unique ?? []) await coll.createIndex(keys, { unique: true });
     for (const keys of def.index ?? []) await coll.createIndex(keys);
+    if ("active" in def.fields) await coll.updateMany({ active: { $exists: false } }, { $set: { active: true } });
     log(`${existing.has(name) ? "updated" : "created"} ${name}`);
   }
 }

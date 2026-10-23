@@ -76,4 +76,9 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(teamEnv,'demo',{role:'owner'},'',400);
  for(const role of ['cliente','proveedor','admin']){const demoSession=await request(teamEnv,'demo',{role});const identity=(await request(teamEnv,'me',undefined,demoSession.cookie)).data;assert.equal(identity.user.id,'demo-'+role);if(role==='admin')await request(teamEnv,'applications',undefined,demoSession.cookie);}
  await request({...env,DEMO_ENABLED:'false'},'demo',{role:'admin'},'',403);
+ // Active flag: deactivated providers disappear and cannot quote; deactivated accounts cannot log in.
+ assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.active,true);
+ await db.collection('providers').updateOne({id:workerId},{$set:{active:false}});assert.ok(!(await request(env,'providers')).data.some((p:any)=>p.id===workerId));await request(env,'providers/'+workerId,undefined,'',404);await request(env,'requests?scope=available',undefined,worker.cookie,403);assert.equal((await request(env,'me',undefined,worker.cookie)).data.user.id,workerId);
+ await db.collection('providers').updateOne({id:workerId},{$set:{active:true}});assert.ok((await request(env,'providers')).data.some((p:any)=>p.id===workerId));ok('Activo','Proveedor desactivado oculto del catálogo y sin oportunidades; se puede reactivar');
+ await db.collection('users').updateOne({email:'other@example.test'},{$set:{active:false}});assert.equal((await request(env,'me',undefined,other.cookie)).data.user,null);await request(env,'login',credentials('other'),'',403);await db.collection('users').updateOne({email:'other@example.test'},{$set:{active:true}});await request(env,'login',credentials('other'));ok('Activo','Cuenta desactivada sin sesión ni acceso; se puede reactivar');
  console.log('TRADE_TEST_REPORT='+JSON.stringify(records));});

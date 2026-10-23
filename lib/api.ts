@@ -1,13 +1,15 @@
 import {Binary,type Db} from 'mongodb';
 import {seedCatalog} from './catalog-seed';
 import {demo} from './demo';
-import {required,trade,price,stars,date,passwordHash} from './rules';
+import {required,trade,price,stars,date,passwordHash,ACTIVE} from './rules';
 import {withDb,type DbEnv} from '../db/mongo';
 type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string,MONGODB_FILES?:string};
 const json=(data:any,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 const id=()=>crypto.randomUUID();
 // Replaces the SQL JOIN on users: copies the user's name from `field` into `as`.
 const withName=(field:string,as:string)=>[{$lookup:{from:'users',localField:field,foreignField:'id',as:'_u'}},{$set:{[as]:{$first:'$_u.name'}}},{$project:{_id:0,_u:0}}];
+// Hides providers whose account an admin deactivated.
+const withActiveAccount=[{$lookup:{from:'users',localField:'id',foreignField:'id',as:'_acct'}},{$match:{'_acct.active':{$ne:false}}},{$project:{_acct:0}}];
 // Public images may have a static URL; adds it as photo_url so pages skip /api/files.
 const withPhotoUrl=[{$lookup:{from:'files',localField:'photo',foreignField:'id',as:'_photo'}},{$set:{photo_url:{$first:'$_photo.url'}}},{$project:{_photo:0}}];
 const withProblemFile=[{$lookup:{from:'files',let:{rid:'$id'},pipeline:[{$match:{$expr:{$and:[{$eq:['$request','$$rid']},{$eq:['$kind','problem']}]}}},{$limit:1},{$project:{_id:0,id:1}}],as:'_problem'}},{$set:{problem_file:{$first:'$_problem.id'}}},{$project:{_id:0,_problem:0}}];
@@ -40,10 +42,10 @@ async function route(req:Request,env:Env,db:Db){
  const sid=(v:unknown)=>typeof v==='string'?v:fail('Datos inválidos.');
  const token=req.headers.get('cookie')?.match(/(?:^|;\s*)trade_session=([^;]+)/)?.[1];
  const session=token?await one('sessions',{token,expires:{$gt:Date.now()}}):null;
- const user:any=session?await one('users',{id:session.user_id},{id:1,name:1,email:1,role:1}):null;
+ const user:any=session?await one('users',{id:session.user_id,...ACTIVE},{id:1,name:1,email:1,role:1}):null;
  const auth=()=>{if(!user)fail('Inicia sesión para continuar.',401);return user};
  const own=async(rid:string)=>{const r=await one('requests',{id:rid});if(!r)fail('Solicitud no encontrada.',404);return r as any};
- const approved=(uid:string)=>one('providers',{id:uid,status:'Aprobada'});
+ const approved=(uid:string)=>one('providers',{id:uid,status:'Aprobada',...ACTIVE});
  const provider=async()=>{auth();const p=await approved(user.id);if(!p)fail('Necesitas un registro de proveedor aprobado.',403);return p as any};
  const fileOwned=async(fid:unknown,kind:string)=>{if(!await one('files',{id:sid(fid),owner:user.id,kind}))fail('Adjunta el archivo solicitado.');return fid as string};
  try{
@@ -57,8 +59,8 @@ async function route(req:Request,env:Env,db:Db){
  }
  if(path.startsWith('files/')&&!env.BUCKET)fail('Las imágenes no están disponibles en esta versión.',503);
  if(path==='me')return json({user,application:user?await one('providers',{id:user.id}):null});
- if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...(t?{trade:t}:{})}},{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:'$_r.stars'}}},...withName('id','name'),...withPhotoUrl,{$project:{document:0,_r:0}}]))}
- if(path.startsWith('providers/')){const pid=path.split('/')[1];const [p]=await agg('providers',[{$match:{id:pid,status:'Aprobada'}},...withName('id','name'),...withPhotoUrl,{$project:{document:0}}]);if(!p)fail('Proveedor no encontrado.',404);const done=(await all('requests',{provider:pid,status:'Completado'},{},{id:1})).map(r=>r.id);return json({...p,works:await all('files',{request:{$in:done},kind:{$in:['before','after']}},{},{id:1,kind:1,request:1,url:1}),reviews:await all('reviews',{provider:pid},{},{stars:1,comment:1})})}
+ if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...ACTIVE,...(t?{trade:t}:{})}},...withActiveAccount,{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:'$_r.stars'}}},...withName('id','name'),...withPhotoUrl,{$project:{document:0,_r:0}}]))}
+ if(path.startsWith('providers/')){const pid=path.split('/')[1];const [p]=await agg('providers',[{$match:{id:pid,status:'Aprobada',...ACTIVE}},...withActiveAccount,...withName('id','name'),...withPhotoUrl,{$project:{document:0}}]);if(!p)fail('Proveedor no encontrado.',404);const done=(await all('requests',{provider:pid,status:'Completado'},{},{id:1})).map(r=>r.id);return json({...p,works:await all('files',{request:{$in:done},kind:{$in:['before','after']}},{},{id:1,kind:1,request:1,url:1}),reviews:await all('reviews',{provider:pid},{},{stars:1,comment:1})})}
  // Admin-only directory of every account; never returns hash or salt.
  if(path==='users'){auth();if(user.role!=='admin')fail('Acceso reservado a administración.',403);return json(await agg('users',[{$project:{_id:0,id:1,name:1,email:1,role:1}},{$lookup:{from:'requests',localField:'id',foreignField:'owner',as:'_req'}},{$lookup:{from:'providers',localField:'id',foreignField:'id',as:'_prov'}},{$set:{requests:{$size:'$_req'},provider_status:{$first:'$_prov.status'}}},{$project:{_req:0,_prov:0}},{$sort:{name:1}}]))}
  if(path==='applications'){auth();if(user.role!=='admin')fail('Acceso reservado a administración.',403);return json(await agg('providers',[{$set:{_order:{$indexOfArray:[['Pendiente','Rechazada','Aprobada'],'$status']}}},{$sort:{_order:1}},{$project:{_order:0}},...withName('id','name'),...withPhotoUrl]))}
@@ -79,12 +81,12 @@ async function route(req:Request,env:Env,db:Db){
  if(path==='demo')return await demo(req,env,db,b.role);
  if(path==='register'||path==='login'){
  const email=required(b.email,'Correo',254).toLowerCase(),pw=required(b.password,'Contraseña',128);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail('Escribe un correo válido.');let u:any;
- if(path==='register'){if(pw.length<10)fail('La contraseña debe tener al menos 10 caracteres.');if(await one('users',{email}))fail('Este correo ya tiene una cuenta.',409);const uid=id(),salt=id();await c('users').insertOne({id:uid,name:required(b.name,'Nombre',100),email,hash:await passwordHash(pw,salt),salt,role:'cliente'});u={id:uid}}else{u=await one('users',{email});if(!u||await passwordHash(pw,u.salt)!==u.hash)fail('Correo o contraseña incorrectos.',401)}const session=id()+id();await c('sessions').insertOne({token:session,user_id:u.id,expires:Date.now()+86400000});return json({ok:true},200,{'Set-Cookie':`trade_session=${session}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${url.protocol==='https:'?'; Secure':''}`})
+ if(path==='register'){if(pw.length<10)fail('La contraseña debe tener al menos 10 caracteres.');if(await one('users',{email}))fail('Este correo ya tiene una cuenta.',409);const uid=id(),salt=id();await c('users').insertOne({id:uid,name:required(b.name,'Nombre',100),email,hash:await passwordHash(pw,salt),salt,role:'cliente',active:true});u={id:uid}}else{u=await one('users',{email});if(!u||await passwordHash(pw,u.salt)!==u.hash)fail('Correo o contraseña incorrectos.',401);if(u.active===false)fail('Esta cuenta está desactivada. Contacta a administración.',403)}const session=id()+id();await c('sessions').insertOne({token:session,user_id:u.id,expires:Date.now()+86400000});return json({ok:true},200,{'Set-Cookie':`trade_session=${session}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${url.protocol==='https:'?'; Secure':''}`})
  }
  if(path==='logout'){if(token)await c('sessions').deleteOne({token});return json({ok:true},200,{'Set-Cookie':'trade_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'})}
  auth();
  // A rejected provider may send a new registration; any other existing one blocks it.
- if(path==='apply'){if(user.role==='admin')fail('Las cuentas de administración no pueden registrarse como proveedores.',403);const previous:any=await one('providers',{id:user.id});if(previous&&previous.status!=='Rechazada')fail('Ya enviaste tu registro como proveedor.',409);if(previous)await c('providers').deleteOne({id:user.id,status:'Rechazada'});await c('providers').insertOne({id:user.id,trade:trade(b.trade),experience:required(b.experience,'Experiencia',500),zone:required(b.zone,'Zona',200),description:required(b.description,'Descripción',2000),photo:await fileOwned(b.photo,'photo'),document:await fileOwned(b.document,'document'),status:'Pendiente'});return json({ok:true},201)}
+ if(path==='apply'){if(user.role==='admin')fail('Las cuentas de administración no pueden registrarse como proveedores.',403);const previous:any=await one('providers',{id:user.id});if(previous&&previous.status!=='Rechazada')fail('Ya enviaste tu registro como proveedor.',409);if(previous)await c('providers').deleteOne({id:user.id,status:'Rechazada'});await c('providers').insertOne({id:user.id,trade:trade(b.trade),experience:required(b.experience,'Experiencia',500),zone:required(b.zone,'Zona',200),description:required(b.description,'Descripción',2000),photo:await fileOwned(b.photo,'photo'),document:await fileOwned(b.document,'document'),status:'Pendiente',active:true});return json({ok:true},201)}
  if(path==='approve'){if(user.role!=='admin')fail('Solo administración puede aprobar.',403);const pid=sid(b.id);if(!(await c('providers').updateOne({id:pid,status:'Pendiente'},{$set:{status:'Aprobada'}})).modifiedCount)fail('No hay un registro pendiente.',409);await c('users').updateOne({id:pid,role:{$ne:'admin'}},{$set:{role:'proveedor'}});return json({ok:true})}
  if(path==='reject'){if(user.role!=='admin')fail('Solo administración puede rechazar.',403);if(!(await c('providers').updateOne({id:sid(b.id),status:'Pendiente'},{$set:{status:'Rechazada'}})).modifiedCount)fail('No hay un registro pendiente.',409);return json({ok:true})}
  // Providers hire other trades; a plumber posting a plumbing request makes no sense.
