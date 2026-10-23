@@ -6,12 +6,12 @@ import {Hero,PopularTrades,ProfessionalCard,HowItWorks,GuidePage} from '../compo
 import {ProfilePage} from '../components/trade/profile';
 import {AccessPage,CreateRequestPage,PublishedNotice} from '../components/trade/access-request';
 import {RemoteImage} from '../components/trade/remote-image';
-import {DemoPage,RoleGuide} from '../components/trade/demo-flow';
+
 
 import {ProviderApplication,ProviderWorkspace} from '../components/trade/provider-workflow';
 import {MyRequests,RequestJourney} from '../components/trade/request-journey';
 import {AdminReview} from '../components/trade/admin-demo';
-import {presentationAccounts} from '../lib/presentation-accounts';
+
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
 async function api(path:string,data?:any){const r=await fetch('/api/'+path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const d:any=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo completar la operación.');return d}
 function Upload({kind,request,onDone,label}:any){
@@ -70,9 +70,9 @@ function go(p:string){
 async function act(fn:()=>Promise<any>){setError('');try{await fn()}catch(e:any){setError(e.message)}}
 async function detail(id:string){setSelected(await api('requests/'+id))}
 async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();setNotice(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.'} as Record<string,string>)[path]||'Cambio guardado.')}
-async function enterDemo(role:'cliente'|'proveedor'|'admin'){const account=presentationAccounts[role];await api('login',{email:account.email,password:account.password});await me();setPhoto('');setDocument('');go('home');window.scrollTo({top:0})}
+
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
-const nav=[...(user?[['home','Mi inicio',House]]:[]),['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck],['demo','Recorrido de demo',Briefcase],...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
+const nav=[...(user?[['home','Mi inicio',House]]:[]),['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck],...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
 const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
 return <div className="shell public-shell">
@@ -90,7 +90,7 @@ return <div className="shell public-shell">
 <div className="main"><main id="main-content" tabIndex={-1}>
 <div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}{user&&providerLink&&<button className="text-link" onClick={()=>go(providerLink.page)}>{providerLink.label} <ArrowUpRight size={15}/></button>}</div>
 {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="notice" role="status"><Check size={18}/>{notice}</div>}
-{user&&page!=='demo'&&page!=='home'&&<RoleGuide user={user} application={application} selected={selected} page={page} onNavigate={go}/>}
+
 
 {page==='explore'&&!profile&&<>
 <Hero onExplore={focusCatalog}/>
@@ -135,12 +135,12 @@ return <div className="shell public-shell">
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
 {view==='admin'&&<AdminReview items={items} people={people} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}} onSetActive={async(kind,id,active)=>{await api(kind==='account'?'account-active':'provider-active',{id,active});await load()}}/>}
-{page==='demo'&&<DemoPage onEnter={enterDemo}/>}
+
 {page==='guide'&&<GuidePage onExplore={()=>{go('explore');window.requestAnimationFrame(focusCatalog)}}/>}
 </main><footer className="site-footer">
   <div><a className="brand" href="/"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a><p>Hogares más nuestros,<br/>un oficio a la vez.</p><small>Demostración académica · Sin pagos reales</small></div>
   {(!user||role==='cliente')&&<div><h3>Explorar</h3>{['Plomería','Electricidad','Carpintería'].map(t=><button key={t} onClick={()=>selectTrade(t)}>{t}</button>)}<button onClick={()=>selectTrade('')}>Todos los oficios</button></div>}
-  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.filter(([key])=>key!=='group').map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button><button onClick={()=>go('demo')}>Cuentas de presentación</button></>}</div>
+  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.filter(([key])=>key!=='group').map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button></>}</div>
   <div className="footer-bottom"><span>© {new Date().getFullYear()} Trade · Proyecto académico</span><span>Fotografías ilustrativas generadas para Trade</span></div>
 </footer></div></div>
 }
