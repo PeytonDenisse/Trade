@@ -14,6 +14,18 @@ const credentials=(name:string)=>({name,email:name+'@example.test',password:'Tes
 const png=readFileSync('public/demo-assets/antes.png');
 async function upload(env:any,cookie:string,kind:string,rid?:string,expected=201){const f=new FormData();f.set('file',new File([png],'demo.png',{type:'image/png'}));f.set('kind',kind);if(rid)f.set('request',rid);return request(env,'upload',f,cookie,expected)}
 function ok(hu:string,scenario:string){records.push({historia:hu,escenario:scenario,esperado:'Operación permitida con datos persistidos; restricciones respetadas',obtenido:'Aserciones correctas',estado:'aprobado'})}
+
+test('Carga de imágenes: acepta 5 MB y conserva el límite superior',async(t)=>{
+ const {env,close}=await fixture();t.after(close);
+ const user=await request(env,'register',credentials('limite-imagen'));
+ const bytes=new Uint8Array(5*1024*1024);bytes.set(png);
+ const form=new FormData();form.set('kind','photo');form.set('file',new File([bytes],'limite.png',{type:'image/png'}));
+ const saved=await request(env,'upload',form,user.cookie,201);
+ const image=await handle(new Request('https://trade.test/api/files/'+saved.data.id,{headers:{cookie:user.cookie}}),env);
+ assert.equal(image.status,200);assert.equal((await image.arrayBuffer()).byteLength,bytes.byteLength);
+ const large=new FormData();large.set('kind','photo');large.set('file',new File([bytes,new Uint8Array(1)],'grande.png',{type:'image/png'}));
+ const rejected=await request(env,'upload',large,user.cookie,400);assert.match(rejected.data.error,/5 MB/);
+});
 test('Validaciones de importes, estrellas y fechas',()=>{assert.equal(price('150.59'),150.59);for(const n of [0,-1,'abc',Infinity])assert.throws(()=>price(n));for(const n of [0,6,2.5,'x'])assert.throws(()=>stars(n));assert.throws(()=>date('2026-02-30'));assert.throws(()=>date('2000-01-01'));ok('HU-08, HU-11, HU-19','Valores inválidos rechazados')});
 
 test('Presentación: imágenes recuperables, casos coherentes y datos ajenos conservados',async(t)=>{

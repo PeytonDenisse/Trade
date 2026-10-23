@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {ChevronDown,LogOut,Settings,UserRound} from 'lucide-react';
+import {ChevronDown,LogOut,Settings,UserRound,ShieldCheck} from 'lucide-react';
 import {RemoteImage} from '../trade/remote-image';
 
 const roleLabel:Record<string,string>={admin:'Administrador',proveedor:'Proveedor',cliente:'Cliente'};
@@ -10,7 +10,7 @@ export function Avatar({user,size=34}:{user:{name:string;photo_url?:string};size
 }
 
 // The avatar opens the account menu (design PDF, section 3): who is signed in, settings, sign out last.
-export function AccountMenu({user,role,onAccount,onProfile,onLogout}:{user:any;role:string;onAccount:()=>void;onProfile?:()=>void;onLogout:()=>void}){
+export function AccountMenu({user,role,onAccount,onProfile,onGuide,onLogout}:{user:any;role:string;onAccount:()=>void;onProfile?:()=>void;onGuide:()=>void;onLogout:()=>void}){
   const [open,setOpen]=useState(false);
   const root=useRef<HTMLDivElement>(null),toggle=useRef<HTMLButtonElement>(null);
   useEffect(()=>{
@@ -28,6 +28,7 @@ export function AccountMenu({user,role,onAccount,onProfile,onLogout}:{user:any;r
     {open&&<div className="account-dropdown" role="menu" aria-label="Mi cuenta">
       <div className="account-card"><Avatar user={user} size={44}/><div><strong>{user.name}</strong><small>{user.email}</small><span className="role-badge" data-role={role}>{roleLabel[role]}</span></div></div>
       <button type="button" role="menuitem" onClick={pick(onAccount)}><Settings size={17}/>Mi cuenta y ajustes</button>
+      <button type="button" role="menuitem" onClick={pick(onGuide)}><ShieldCheck size={17}/>Cómo funciona</button>
       {onProfile&&<button type="button" role="menuitem" onClick={pick(onProfile)}><UserRound size={17}/>Ver mi perfil público</button>}
       <button type="button" role="menuitem" className="account-logout" onClick={pick(onLogout)}><LogOut size={17}/>Cerrar sesión</button>
     </div>}

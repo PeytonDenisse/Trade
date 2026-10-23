@@ -1,5 +1,5 @@
 {
-  "executedAt": "2026-10-22T21:00:53.373Z",
+  "executedAt": "2026-10-23T22:33:21.364Z",
   "environment": "MongoDB temporary server + MongoDB image storage; same API handler as deployment",
   "results": [
     {
@@ -40,6 +40,41 @@
     {
       "historia": "HU-04",
       "escenario": "Solo administración aprueba y habilita proveedores",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Flujo",
+      "escenario": "Un proveedor no publica solicitudes de su propio oficio, pero sí de otros",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Flujo",
+      "escenario": "Administración rechaza registros pendientes; el proveedor puede volver a enviarlo",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Administración",
+      "escenario": "Directorio de clientes y proveedores solo para administración y sin contraseñas",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Administración",
+      "escenario": "Las cuentas de administración no publican solicitudes de servicio",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Administración",
+      "escenario": "Las cuentas de administración no se registran como proveedores",
       "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
       "obtenido": "Aserciones correctas",
       "estado": "aprobado"
@@ -157,8 +192,57 @@
       "estado": "aprobado"
     },
     {
+      "historia": "Rendimiento",
+      "escenario": "Fotografías públicas con URL directa; documentos privados siguen protegidos",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
       "historia": "Seguridad",
       "escenario": "Acceso por rol, privacidad de documentos, cierre de sesión y origen",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Oficios",
+      "escenario": "Un proveedor ofrece varios oficios: catálogo, oportunidades, cotización y regla de oficio propio",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Solicitud directa",
+      "escenario": "El cliente pide a un proveedor concreto; solo ese proveedor la ve y cotiza",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Activo",
+      "escenario": "La base de datos rechaza usuarios sin el campo active",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Activo",
+      "escenario": "Proveedor desactivado oculto del catálogo y sin oportunidades; se puede reactivar",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Activo",
+      "escenario": "Cuenta desactivada sin sesión ni acceso; se puede reactivar",
+      "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
+      "obtenido": "Aserciones correctas",
+      "estado": "aprobado"
+    },
+    {
+      "historia": "Administración",
+      "escenario": "Administración desactiva y reactiva cuentas y proveedores; nunca otra cuenta de administración",
       "esperado": "Operación permitida con datos persistidos; restricciones respetadas",
       "obtenido": "Aserciones correctas",
       "estado": "aprobado"
