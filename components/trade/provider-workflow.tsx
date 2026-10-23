@@ -2,12 +2,12 @@
 import {useId,useState,type FormEvent,type ReactNode} from 'react';
 import {ArrowRight,BriefcaseBusiness,CalendarDays,Camera,CheckCircle2,ChevronLeft,ClipboardList,Image as ImageIcon,LockKeyhole,ShieldCheck,Wrench} from 'lucide-react';
 import {trades} from '../../lib/rules';
-import {designImages} from '../../lib/design-images';
+import {designImages,fileSrc} from '../../lib/design-images';
 import {RemoteImage} from './remote-image';
 
 type Application={status:'Pendiente'|'Aprobada'|'Rechazada';trade:string;experience:string;zone:string;description:string;photo?:string};
 type ApplicationValues={trade:string;experience:string;zone:string;description:string};
-type WorkFile={id:string;kind:string};
+type WorkFile={id:string;kind:string;url?:string};
 type ProviderRequest={id:string;trade:string;description:string;date:string;status:string;problem_file?:string;owner_name?:string;files?:WorkFile[];quotes?:{id:string;price:number;description:string;status:string}[]};
 const formatDate=(value:string)=>{const [year,month,day]=value.split('-').map(Number);return new Intl.DateTimeFormat('es-MX',{day:'numeric',month:'short',year:'numeric'}).format(new Date(year,month-1,day))};
 const money=(value:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(value);
@@ -46,7 +46,7 @@ export function ProviderApplication({authenticated,application,photoId,documentI
 
 function WorkPhoto({label,kind,request,upload}:{label:string;kind:'before'|'after';request:ProviderRequest;upload?:ReactNode}){
   const files=request.files?.filter(file=>file.kind===kind)||[];
-  return <div className="provider-work-photo"><h3>{label}</h3>{files.length?<div className="provider-work-photo-images">{files.map(file=><RemoteImage key={file.id} src={'/api/files/'+file.id} alt={`Fotografía ${label.toLowerCase()} subida para este trabajo`}/>)}</div>:<div className="provider-evidence-empty"><ImageIcon size={28}/><span>Sin foto de {label.toLowerCase()} todavía.</span></div>}{upload}</div>;
+  return <div className="provider-work-photo"><h3>{label}</h3>{files.length?<div className="provider-work-photo-images">{files.map(file=><RemoteImage key={file.id} src={fileSrc(file.id,file.url)} alt={`Fotografía ${label.toLowerCase()} subida para este trabajo`}/>)}</div>:<div className="provider-evidence-empty"><ImageIcon size={28}/><span>Sin foto de {label.toLowerCase()} todavía.</span></div>}{upload}</div>;
 }
 
 function ProviderDetail({mode,request,onQuote,onFinish,renderUpload}:{mode:'available'|'assigned';request:ProviderRequest;onQuote:(price:string,description:string)=>Promise<void>;onFinish:()=>Promise<void>;renderUpload:(kind:'before'|'after')=>ReactNode}){

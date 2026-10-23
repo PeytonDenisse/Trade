@@ -37,8 +37,9 @@ export const collections: Record<string, Def> = {
   },
   files: {
     key: "id",
-    fields: { id: str, owner: str, request: optStr, kind: str, mime: str },
-    optional: ["request"],
+    // url: optional public address of the image (e.g. /media/<id>.png); the bytes stay in file_objects.
+    fields: { id: str, owner: str, request: optStr, kind: str, mime: str, url: optStr },
+    optional: ["request", "url"],
     index: [{ owner: 1 }, { request: 1 }],
   },
   reviews: {

@@ -2,8 +2,9 @@
 import {useState, type ReactNode} from 'react';
 import {ArrowRight, CalendarDays, Camera, Check, CheckCircle2, ChevronLeft, ClipboardList, Image as ImageIcon, Plus, Star, Wrench} from 'lucide-react';
 import {RemoteImage} from './remote-image';
+import {fileSrc} from '../../lib/design-images';
 
-type Request = {id:string;trade:string;description:string;date:string;status:string;problem_file?:string;provider?:string;quote?:string;files?:{id:string;kind:string}[];quotes?:Quote[];review?:{stars?:number;comment?:string}|null};
+type Request = {id:string;trade:string;description:string;date:string;status:string;problem_file?:string;provider?:string;quote?:string;files?:{id:string;kind:string;url?:string}[];quotes?:Quote[];review?:{stars?:number;comment?:string}|null};
 type Quote = {id:string;provider_name?:string;price:number;description:string;status:string};
 const steps=['Activa','Asignada','Terminado','Completado'];
 const money=(price:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(price);
@@ -24,7 +25,7 @@ export function MyRequests({items,loading,error,openingId,onOpen,onCreate}:{item
 
 function FileGroup({request,kind,label}:{request:Request;kind:string;label:string}){
   const files=request.files?.filter(file=>file.kind===kind)||[];
-  return <div className="work-photo-group"><h3>{label}</h3>{files.length?<div className="work-photo-list">{files.map(file=><RemoteImage key={file.id} src={'/api/files/'+file.id} alt={`${label} del trabajo, fotografía subida por el proveedor`}/>)}</div>:<div className="work-photo-empty"><ImageIcon size={26}/><span>Sin fotografía de {label.toLowerCase()} todavía.</span></div>}</div>;
+  return <div className="work-photo-group"><h3>{label}</h3>{files.length?<div className="work-photo-list">{files.map(file=><RemoteImage key={file.id} src={fileSrc(file.id,file.url)} alt={`${label} del trabajo, fotografía subida por el proveedor`}/>)}</div>:<div className="work-photo-empty"><ImageIcon size={26}/><span>Sin fotografía de {label.toLowerCase()} todavía.</span></div>}</div>;
 }
 
 function ReviewPanel({request,onStars,onComment}:{request:Request;onStars:(stars:number)=>Promise<void>;onComment:(comment:string)=>Promise<void>}){

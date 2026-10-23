@@ -15,6 +15,12 @@ export function publicImageUrl(value: unknown): string | undefined {
   } catch { /* File identifiers are not public image URLs. */ }
 }
 
+// Images exported to the site (public/media) load directly; everything else goes through the API.
+export function fileSrc(id: string, url?: unknown) {
+  if (typeof url === 'string' && /^\/media\/[\w.-]+$/.test(url)) return url;
+  return publicImageUrl(url) || '/api/files/' + encodeURIComponent(id);
+}
+
 export function tradeImage(trade: string) {
   return ({
     'Plomería': designImages.plumbing,
@@ -23,9 +29,9 @@ export function tradeImage(trade: string) {
   } as Record<string, string>)[trade] || '/image-placeholder.svg';
 }
 
-export function providerImage(provider: { photo?: unknown; trade: string }) {
+export function providerImage(provider: { photo?: unknown; photo_url?: unknown; trade: string }) {
   const photo = publicImageUrl(provider.photo);
   const fileId = typeof provider.photo === 'string' && /^[\w-]{1,100}$/.test(provider.photo)
     ? provider.photo : undefined;
-  return { src: photo || (fileId ? '/api/files/' + encodeURIComponent(fileId) : '/image-placeholder.svg'), illustrative: !photo && !fileId };
+  return { src: photo || (fileId ? fileSrc(fileId, provider.photo_url) : '/image-placeholder.svg'), illustrative: !photo && !fileId };
 }
