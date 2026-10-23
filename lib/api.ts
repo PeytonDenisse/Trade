@@ -9,7 +9,7 @@ const id=()=>crypto.randomUUID();
 // Replaces the SQL JOIN on users: copies the user's name from `field` into `as`.
 const withName=(field:string,as:string)=>[{$lookup:{from:'users',localField:field,foreignField:'id',as:'_u'}},{$set:{[as]:{$first:'$_u.name'}}},{$project:{_id:0,_u:0}}];
 const withProblemFile=[{$lookup:{from:'files',let:{rid:'$id'},pipeline:[{$match:{$expr:{$and:[{$eq:['$request','$$rid']},{$eq:['$kind','problem']}]}}},{$limit:1},{$project:{_id:0,id:1}}],as:'_problem'}},{$set:{problem_file:{$first:'$_problem.id'}}},{$project:{_id:0,_problem:0}}];
-// R2 remains preferred. Small demo uploads can use MongoDB on hosts without R2.
+// Explicit MongoDB selection also applies locally, where Vite still supplies an empty R2 binding.
 function mongoStorage(db:Db){
  const objects=db.collection<{_id:string,data:Binary}>('file_objects');
  return {
@@ -24,7 +24,7 @@ function mongoStorage(db:Db){
 }
 export function handle(req:Request,env:Env){
  return withDb(env,db=>{
-  const BUCKET=env.BUCKET||(env.MONGODB_FILES==='true'?mongoStorage(db):undefined);
+  const BUCKET=env.MONGODB_FILES==='true'?mongoStorage(db):env.BUCKET;
   return route(req,{...env,BUCKET},db);
  }).catch((e:any)=>json({error:e.message||'No pudimos completar la operación.'},500));
 }
@@ -47,6 +47,12 @@ async function route(req:Request,env:Env,db:Db){
  try{
  if(req.method!=='GET') {const origin=req.headers.get('origin');if(origin&&origin!==url.origin)fail('Origen no permitido.',403);if(Number(req.headers.get('content-length')||0)>5500000)fail('El archivo supera el límite.',413)}
  if(req.method==='GET'){
+ if(path==='demo-status'){
+  if(env.DEMO_ENABLED!=='true')return json({enabled:false,requests:[]});
+  const ids=['presentation-new','presentation-active','presentation-assigned','presentation-finished','presentation-completed'];
+  const requests=await all('requests',{id:{$in:ids}},{},{id:1,description:1,status:1});
+  return json({enabled:true,prepared:requests.length===ids.length,requests,providerStatus:(await approved('demo-proveedor'))?'Aprobada':'Sin aprobación',pendingApplications:await c('providers').countDocuments({status:'Pendiente'})});
+ }
  if(path.startsWith('files/')&&!env.BUCKET)fail('Las imágenes no están disponibles en esta versión.',503);
  if(path==='me')return json({user,application:user?await one('providers',{id:user.id}):null});
  if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...(t?{trade:t}:{})}},{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:'$_r.stars'}}},...withName('id','name'),{$project:{document:0,_r:0}}]))}

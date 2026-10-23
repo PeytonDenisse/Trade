@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs';
 import {ensureCollections} from '../db/collections';
 import {handle} from '../lib/api';
 import {price,stars,date} from '../lib/rules';
+import {preparePresentation,presentationIds} from '../lib/presentation-data';
 async function fixture(){const server=await MongoMemoryServer.create();const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
 const records:any[]=[];
 async function request(env:any,path:string,data?:any,cookie='',expected=200,extra:any={}){const headers:any={...extra};if(cookie)headers.cookie=cookie;let body:any;if(data instanceof FormData)body=data;else if(data!==undefined){body=JSON.stringify(data);headers['content-type']='application/json'}const r=await handle(new Request('https://trade.test/api/'+path,{method:data===undefined?'GET':'POST',headers,body}),env);const result=await r.json();assert.equal(r.status,expected,`${path}: ${JSON.stringify(result)}`);return {data:result as any,cookie:r.headers.get('set-cookie')?.split(';')[0]||cookie}}
@@ -14,6 +15,34 @@ const png=readFileSync('public/demo-assets/antes.png');
 async function upload(env:any,cookie:string,kind:string,rid?:string,expected=201){const f=new FormData();f.set('file',new File([png],'demo.png',{type:'image/png'}));f.set('kind',kind);if(rid)f.set('request',rid);return request(env,'upload',f,cookie,expected)}
 function ok(hu:string,scenario:string){records.push({historia:hu,escenario:scenario,esperado:'Operación permitida con datos persistidos; restricciones respetadas',obtenido:'Aserciones correctas',estado:'aprobado'})}
 test('Validaciones de importes, estrellas y fechas',()=>{assert.equal(price('150.59'),150.59);for(const n of [0,-1,'abc',Infinity])assert.throws(()=>price(n));for(const n of [0,6,2.5,'x'])assert.throws(()=>stars(n));assert.throws(()=>date('2026-02-30'));assert.throws(()=>date('2000-01-01'));ok('HU-08, HU-11, HU-19','Valores inválidos rechazados')});
+
+test('Presentación: imágenes recuperables, casos coherentes y datos ajenos conservados',async(t)=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const normal=await request(env,'register',credentials('cuenta-normal'));
+ const saved=(await request(env,'requests',{trade:'Plomería',description:'Solicitud ajena a los ejemplos',date:new Date(Date.now()+86400000).toISOString().slice(0,10)},normal.cookie,201)).data.id;
+ const assets={profile:png,document:png,before:png,after:png,trades:{'Plomería':png}};
+ await preparePresentation(db,assets);
+ await preparePresentation(db,assets);
+ assert.ok(await db.collection('requests').findOne({id:saved}));
+ assert.equal(await db.collection('requests').countDocuments({id:{$in:presentationIds}}),5);
+ const missing=await db.collection('files').aggregate([{$lookup:{from:'file_objects',localField:'id',foreignField:'_id',as:'object'}},{$match:{object:{$size:0}}}]).toArray();assert.equal(missing.length,0);
+ const teamEnv={...env,DEMO_ENABLED:'true'};
+ const overview=await request(teamEnv,'demo-status');assert.equal(overview.data.prepared,true);
+ await request(teamEnv,'demo-catalog',{});
+ const client=await request(teamEnv,'demo',{role:'cliente'}),worker=await request(teamEnv,'demo',{role:'proveedor'}),admin=await request(teamEnv,'demo',{role:'admin'});
+ const publicPhoto=await handle(new Request('https://trade.test/api/files/catalog-provider-1-avatar'),teamEnv);assert.equal(publicPhoto.status,200);assert.deepEqual(new Uint8Array(await publicPhoto.arrayBuffer()),new Uint8Array(png));
+ const localWithEmptyR2=await handle(new Request('https://trade.test/api/files/catalog-provider-1-avatar'),{...teamEnv,BUCKET:{get(){throw Error('No debe consultar R2 cuando MongoDB está seleccionado.')}}});assert.equal(localWithEmptyR2.status,200);
+ await request(teamEnv,'files/presentation-applicant-document',undefined,client.cookie,403);
+ const privateDocument=await handle(new Request('https://trade.test/api/files/presentation-applicant-document',{headers:{cookie:admin.cookie}}),teamEnv);assert.equal(privateDocument.status,200);
+ await request(teamEnv,'quote',{request:'presentation-new',price:900,description:'Diagnóstico y reparación de la conexión.'},worker.cookie,201);
+ const detail=(await request(teamEnv,'requests/presentation-new',undefined,client.cookie)).data;assert.equal(detail.quotes.length,1);
+ await request(teamEnv,'accept',{id:detail.quotes[0].id},client.cookie);
+ await request(teamEnv,'finish',{request:'presentation-assigned'},worker.cookie);
+ await request(teamEnv,'confirm',{request:'presentation-finished'},client.cookie);
+ await request(teamEnv,'review',{request:'presentation-finished',stars:5,comment:'Resultado revisado.'},client.cookie);
+ await request(teamEnv,'approve',{id:'presentation-applicant'},admin.cookie);
+ ok('Presentación','Casos preparados con imágenes, permisos, roles y restablecimiento sin borrar solicitudes ajenas');
+});
 test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,env,close}=await fixture();t.after(close);
  await request(env,'requests',undefined,'',401);
  const client=await request(env,'register',credentials('ana'));ok('HU-01','Registro de cuenta con nombre, correo y contraseña');await request(env,'register',credentials('ana'),'',409);await request(env,'register',{...credentials('short'),password:'abc'},'',400);await request(env,'login',{...credentials('ana'),password:'wrong'},'',401);
@@ -22,6 +51,7 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(env,'applications',undefined,client.cookie,403);await request(env,'approve',{id:workerId},client.cookie,403);await request(env,'requests?scope=available',undefined,worker.cookie,403);
  const photo=(await upload(env,worker.cookie,'photo')).data.id,document=(await upload(env,worker.cookie,'document')).data.id;
  await request(env,'apply',{trade:'Plomería',experience:'5 años',zone:'León',description:'Plomería residencial',photo,document},worker.cookie,201);assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.status,'Pendiente');assert.equal((await request(env,'providers')).data.length,0);ok('HU-03','Solicitud pendiente con documentos e información obligatoria');
+ for(const [cookie,expected] of [[worker.cookie,200],[admin.cookie,200],[other.cookie,403],['',403]] as const){const headers=new Headers();if(cookie)headers.set('cookie',cookie);const response=await handle(new Request('https://trade.test/api/files/'+document,{headers}),env);assert.equal(response.status,expected)}
  await request(env,'approve',{id:workerId},admin.cookie);assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.status,'Aprobada');ok('HU-04','Solo administración aprueba y habilita proveedores');
  await request(env,'requests',{trade:'Plomería',description:'Fuga en mi casa',date:'2099-01-01'},worker.cookie,403);await request(env,'requests',{trade:'Pintura',description:'Pintar recámara',date:'2099-01-01'},worker.cookie,201);ok('Flujo','Un proveedor no publica solicitudes de su propio oficio, pero sí de otros');
  const rita=await request(env,'register',credentials('rita'));const ritaPhoto=(await upload(env,rita.cookie,'photo')).data.id,ritaDoc=(await upload(env,rita.cookie,'document')).data.id;const ritaApply={trade:'Electricidad',experience:'2 años',zone:'León',description:'Instalaciones',photo:ritaPhoto,document:ritaDoc};

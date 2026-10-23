@@ -1,12 +1,14 @@
 # Trade — POC académica
 
+Para presentar el flujo de cliente, proveedor y administración, consulta [el guion paso a paso con cuentas y contraseñas](docs/demo-presentacion.md). Usa **Cuentas de presentación** para seguir un solo servicio desde su creación hasta la reseña.
+
 Aplicación para solicitar servicios de oficios y seguir su contratación hasta la evaluación.
 
 ## Alcance
 20 historias HU-01 a HU-20 de Requerimientos (1).docx. Jira existente: KAN-11 a KAN-30. Siete épicas KAN-4 a KAN-10. Una historia por funcionalidad. No procesa pagos ni certifica identidades reales.
 
 ## Arquitectura
-React + TypeScript con Vinext. API en `lib/api.ts`, validaciones en `lib/rules.ts`, interfaz en `app/page.tsx`. Base MongoDB Atlas (colecciones en `db/collections.ts`, conexión por petición en `db/mongo.ts`), archivos R2. El esquema SQL original queda como referencia en `db/schema.ts` y `drizzle/`. Aplicación monolítica sin microservicios. Cada petición comprueba sesión, propietario y rol. Las contraseñas usan PBKDF2-SHA256 con sal aleatoria, las sesiones son HttpOnly/SameSite y caducan en 24 horas. Sites conserva su acceso privado mediante ChatGPT, separado del registro académico de Trade.
+React + TypeScript con Vinext. API en `lib/api.ts`, validaciones en `lib/rules.ts`, interfaz en `app/page.tsx`. Base MongoDB Atlas (colecciones en `db/collections.ts`, conexión por petición en `db/mongo.ts`), archivos en MongoDB con MONGODB_FILES=true (R2 opcional). El esquema SQL original queda como referencia en `db/schema.ts` y `drizzle/`. Aplicación monolítica sin microservicios. Cada petición comprueba sesión, propietario y rol. Las contraseñas usan PBKDF2-SHA256 con sal aleatoria, las sesiones son HttpOnly/SameSite y caducan en 24 horas. Sites conserva su acceso privado mediante ChatGPT, separado del registro académico de Trade.
 
 ## Ejecución local (Windows, macOS, Linux)
 Requisitos: Node 24 y pnpm 11.25.0. Desde la carpeta:
@@ -22,7 +24,7 @@ pnpm dev
 
 Antes, copia `.env.example` a `.env` con tu `MONGODB_URI` (ver MongoDB Atlas). Usa la dirección impresa por el servidor. `pnpm db:setup` puede repetirse sin duplicar datos. `pnpm test` no usa Atlas: levanta un MongoDB temporal en memoria (la primera vez descarga unos 600 MB). Los archivos privados locales y credenciales no se versionan.
 
-Los colaboradores pueden usar **Recorrido de demo** para entrar directamente como cliente, proveedor o administración. Configura `DEMO_ENABLED=true` en `.env`. El registro normal conserva su rol de cliente. Las cuentas y los datos de demo son compartidos.
+Los colaboradores pueden usar **Cuentas de presentación** para entrar como cliente, proveedor o administrador con sus credenciales ficticias. El registro normal crea cuentas de cliente; desde Mi inicio pueden solicitar un perfil de proveedor.
 
 ## MongoDB Atlas
 Copia `.env.example` a `.env` y completa `MONGODB_URI` con tu usuario y contraseña. `.env` no se versiona.
@@ -36,22 +38,12 @@ pnpm db:setup --import ruta/a/Tradesqlite.sqlite   # además copia las filas des
 Las colecciones replican las tablas de `db/schema.ts`. La API abre una conexión por petición porque Workers no permite reutilizar sockets entre peticiones; cada petición tarda de 1 a 3 segundos. Para publicar, configura `MONGODB_URI` como secreto en el alojamiento y permite su IP en Atlas Network Access.
 
 ## Demostración del equipo (local y alojada)
-Con `DEMO_ENABLED=true`, abre **Recorrido de demo** y pulsa **Entrar** en el rol que quieras probar. No necesitas código ni descargar archivos de GitHub Actions. Las cuentas y los datos son compartidos. Esta instancia académica permite que cualquier visitante use los tres roles de demo. Para cerrar el recorrido, configura `DEMO_ENABLED=false` y vuelve a publicar.
 
-Sin R2, `MONGODB_FILES=true` guarda archivos en `file_objects`. Conserva el límite de 5 MB y los permisos de lectura. Permite completar aprobación de proveedor y evidencias. Las fotos locales de R2 no se migran automáticamente al sitio alojado.
+Abre **Cuentas de presentación**. Cada rol tiene un inicio y un menú propios. El [guion de presentación](docs/demo-presentacion.md) contiene los tres usuarios y el recorrido completo del mismo pedido: aprobación, publicación, cotización, aceptación, evidencias, confirmación y reseña.
 
-1. Abre Recorrido de demo, descarga las cuatro imágenes ficticias.
-2. Entra como proveedor, completa oficio Plomería, experiencia, zona y descripción. Adjunta perfil e identificación ficticia.
-3. Cambia a administración y aprueba la solicitud.
-4. Cambia a cliente y busca Plomería. Consulta el perfil. Crea una solicitud y adjunta una imagen del problema.
-5. Cambia a proveedor, abre Oportunidades y cotiza.
-6. Cambia a cliente, abre Mis solicitudes y acepta la cotización.
-7. Como proveedor, abre Mis trabajos, carga Antes y Después y marca Terminado.
-8. Como cliente, revisa la comparación, confirma Completado, guarda estrellas y comentario.
-9. Consulta el perfil del proveedor: el trabajo completado y la reseña aparecen allí.
-10. Registro/contraseña se demuestra aparte, cerrando sesión y creando una cuenta normal.
+**pnpm demo:accounts** prepara las cuentas con respaldo privado de Atlas, conserva solicitudes y no reinicia la aprobación realizada. La cliente comienza sin pedidos; el proveedor tiene su perfil completo y pendiente de aprobación. Las pantallas de estas cuentas se concentran en el caso de Ana y Luis.
 
-Las ilustraciones de ejemplo están etiquetadas como ficticias. Para evaluar carga de fotografías, también se aceptan PNG, JPG y WebP de hasta 5 MB. No uses documentos personales reales.
+Con **MONGODB_FILES=true**, las imágenes se guardan en file_objects con límite de 5 MB y permisos de lectura. Las imágenes ilustrativas y los documentos ficticios para adjuntar se descargan desde Cuentas de presentación. Los cambios de interfaz aparecen en la web después del despliegue de CI/CD.
 
 ## Pruebas
 `pnpm test` ejecuta validaciones unitarias y un recorrido integrado con MongoDB temporal, incluyendo la persistencia binaria de imágenes y el acceso directo a los tres roles de demo. Comprueba las 20 historias, rechazo de accesos indebidos, documentos privados, origen de peticiones y estados. Genera `docs/test-results.json`. Estas pruebas no equivalen a una ejecución de todos los formularios en un navegador real ni a una prueba de carga.
