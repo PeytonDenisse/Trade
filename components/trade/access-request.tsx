@@ -88,15 +88,16 @@ const today = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
-export function CreateRequestPage({ onSubmit }: { onSubmit: (values: RequestValues) => Promise<void> }) {
+export function CreateRequestPage({ initialTrade = '', excludeTrade = '', onSubmit }: { initialTrade?: string; excludeTrade?: string; onSubmit: (values: RequestValues) => Promise<void> }) {
   const id = useId();
-  const [values, setValues] = useState<RequestValues>({ trade: '', description: '', date: '' });
+  const options = trades.filter(trade => trade !== excludeTrade);
+  const [values, setValues] = useState<RequestValues>({ trade: initialTrade, description: '', date: '' });
   const [errors, setErrors] = useState<Partial<Record<RequestField, string>>>({});
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
   function update(field: RequestField, value: string) { setValues(current => ({ ...current, [field]: value })); setErrors(current => ({ ...current, [field]: '' })); setFormError(''); }
   function validate(field: RequestField, value: string) {
-    if (field === 'trade') return trades.includes(value) ? '' : 'Selecciona un oficio.';
+    if (field === 'trade') return options.includes(value) ? '' : 'Selecciona un oficio.';
     if (field === 'description') return !value.trim() ? 'Describe qué necesitas.' : value.length > 2000 ? 'Usa como máximo 2000 caracteres.' : '';
     return !value ? 'Selecciona una fecha.' : value < today() ? 'Selecciona una fecha de hoy o futura.' : '';
   }
@@ -117,10 +118,10 @@ export function CreateRequestPage({ onSubmit }: { onSubmit: (values: RequestValu
   }
   return <div className="request-create-page">
     <section className="request-create-intro"><div><p className="eyebrow">TU PROYECTO EMPIEZA AQUÍ</p><h1>Publica tu solicitud y encuentra ayuda para <em>tu proyecto</em></h1><p>Describe qué necesitas y elige una fecha. Después de publicar podrás añadir una foto del problema si quieres dar más contexto.</p></div><figure><RemoteImage src={designImages.plumbing} alt="Trabajo de plomería, fotografía ilustrativa" width={600} height={340}/><figcaption>Imagen ilustrativa</figcaption></figure></section>
-    <section className="request-form-card" aria-labelledby={id + '-title'}><div className="request-form-heading"><span><FileText size={25}/></span><div><h2 id={id + '-title'}>Crea tu solicitud de servicio</h2><p>Elige el oficio, explica el trabajo y señala cuándo lo necesitas.</p></div></div>
+    <section className="request-form-card" aria-labelledby={id + '-title'}><div className="request-form-heading"><span><FileText size={25}/></span><div><h2 id={id + '-title'}>Crea tu solicitud de servicio</h2><p>Elige el oficio, explica el trabajo y señala cuándo lo necesitas. Tu solicitud llegará a todos los profesionales aprobados de ese oficio; cada uno puede enviarte una cotización y tú eliges una.</p></div></div>
       <form onSubmit={submit} noValidate>
         {formError && <p className="error" role="alert">{formError}</p>}
-        <div className="request-form-grid"><div className="access-field"><label htmlFor={id + '-trade'}>Oficio</label><select id={id + '-trade'} value={values.trade} onChange={event => update('trade', event.target.value)} aria-invalid={!!errors.trade} aria-describedby={errors.trade ? id + '-trade-error' : undefined}><option value="">Selecciona un oficio</option>{trades.map(trade => <option key={trade} value={trade}>{trade}</option>)}</select>{errors.trade && <p className="field-error" id={id + '-trade-error'} role="alert">{errors.trade}</p>}</div>
+        <div className="request-form-grid"><div className="access-field"><label htmlFor={id + '-trade'}>Oficio</label><select id={id + '-trade'} value={values.trade} onChange={event => update('trade', event.target.value)} aria-invalid={!!errors.trade} aria-describedby={errors.trade ? id + '-trade-error' : undefined}><option value="">Selecciona un oficio</option>{options.map(trade => <option key={trade} value={trade}>{trade}</option>)}</select>{excludeTrade && <small>{excludeTrade} no aparece porque es tu propio oficio.</small>}{errors.trade && <p className="field-error" id={id + '-trade-error'} role="alert">{errors.trade}</p>}</div>
           <div className="access-field request-description"><label htmlFor={id + '-description'}>Descripción</label><textarea id={id + '-description'} value={values.description} onChange={event => update('description', event.target.value)} maxLength={2000} placeholder="Por ejemplo: hay una fuga bajo el lavabo y necesito revisar la tubería." aria-invalid={!!errors.description} aria-describedby={id + '-description-help' + (errors.description ? ' ' + id + '-description-error' : '')}/><div className="field-meta"><small id={id + '-description-help'}>Describe el problema sin compartir datos personales.</small><small>{values.description.length}/2000</small></div>{errors.description && <p className="field-error" id={id + '-description-error'} role="alert">{errors.description}</p>}</div>
           <div className="access-field"><label htmlFor={id + '-date'}>Fecha solicitada</label><div className="date-control"><input id={id + '-date'} type="date" min={today()} value={values.date} onChange={event => update('date', event.target.value)} aria-invalid={!!errors.date} aria-describedby={id + '-date-help' + (errors.date ? ' ' + id + '-date-error' : '')}/><CalendarDays size={19} aria-hidden="true"/></div><small id={id + '-date-help'}>Hoy o una fecha futura.</small>{errors.date && <p className="field-error" id={id + '-date-error'} role="alert">{errors.date}</p>}</div></div>
         <button className="primary request-submit" type="submit" disabled={busy}>{busy ? 'Publicando…' : 'Publicar solicitud'} <ArrowRight size={18}/></button>

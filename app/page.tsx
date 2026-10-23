@@ -47,7 +47,11 @@ useEffect(()=>{
 function focusCatalog(){setProfile(null);setPage('explore');window.requestAnimationFrame(()=>{const catalog=window.document.getElementById('catalogo');catalog?.scrollIntoView({block:'start'});catalog?.focus({preventScroll:true})})}
 function selectTrade(value:string){setFilter(value);go('explore');window.requestAnimationFrame(focusCatalog)}
 const [user,setUser]=useState<any>(null),[application,setApplication]=useState<any>(null),[page,setPage]=useState('explore'),[providers,setProviders]=useState<any[]>([]),[filter,setFilter]=useState(''),[items,setItems]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[profile,setProfile]=useState<any>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[photo,setPhoto]=useState(''),[document,setDocument]=useState('');
+const [requestTrade,setRequestTrade]=useState('');
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
+// The provider's own trade can't be requested; an empty trade means the client chooses.
+function startRequest(trade=''){setRequestTrade(trade);if(user)go('create');else{setAuthDestination('create');go('login')}}
+const ownTrade=application&&application.status!=='Rechazada'?application.trade:'';
 async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(page==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(page)){const result=await api('requests?scope='+page);if(sequence===loadSequence.current)setItems(page==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}if(page==='admin'){const result=await api('applications');if(sequence===loadSequence.current)setItems(result)}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
 useEffect(()=>{me().then(d=>{if(d.user)go('home')}).catch(e=>setError(e.message))},[]);useEffect(()=>{load()},[page,filter]);
 function go(p:string){
@@ -62,21 +66,23 @@ async function change(path:string,data:any){await api(path,data);await detail(se
 async function enterDemo(role:'cliente'|'proveedor'|'admin'){const account=presentationAccounts[role];await api('login',{email:account.email,password:account.password});await me();setPhoto('');setDocument('');go('home');window.scrollTo({top:0})}
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
 const pendingApplications=items.filter(p=>p.status==='Pendiente'&&(user?.id!=='presentation-admin-login'||p.id==='presentation-provider-login'));
-const nav=(!user?[['explore','Explorar profesionales',Search],['demo','Cuentas de presentación',UserRound]]:role==='admin'?[['home','Mi inicio',House],['admin','Proveedores pendientes',ShieldCheck]]:role==='proveedor'?[['home','Mi inicio',House],['apply','Mi perfil',UserRound],['available','Solicitudes para cotizar',ClipboardList],['assigned','Mis trabajos',Wrench]]:[['home','Mi inicio',House],['explore','Explorar profesionales',Search],['mine','Mis solicitudes y cotizaciones',ClipboardList],['create','Nueva solicitud',Plus]]) as any[];
+const nav=[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck],['demo','Recorrido de demo',Briefcase],['mine','Mis solicitudes',ClipboardList],...(application?.status==='Aprobada'?[['group','Como proveedor'],['available','Oportunidades',Briefcase],['assigned','Mis trabajos',Wrench]]:[]),...(user?.role==='admin'?[['group','Administración'],['admin','Revisar proveedores',ShieldCheck]]:[])] as any[];
+// "Offer my services" only makes sense for clients who have not registered as providers yet.
+const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
 return <div className="shell public-shell">
 <a className="skip-link" href="#main-content">Ir al contenido</a>
 <header className="site-header"><div className="site-header-inner">
   <a className="brand" href="/" aria-label="Trade inicio"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a>
   <nav ref={navigation} id="site-navigation" aria-label="Navegación principal" className={menuOpen?'site-navigation is-open':'site-navigation'}>
-    {nav.map(([key,label,Icon])=><button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination(key==='mine'?'mine':'explore');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
-    {user?.role!=='admin'&&user&&<button className="mobile-offer" onClick={()=>go('apply')}>Ofrecer mis servicios</button>}
+    {nav.map(([key,label,Icon])=>key==='group'?<span key={label} className="nav-group-label">{label}</span>:<button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination(key==='mine'?'mine':'explore');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
+    {providerLink&&<button className="mobile-offer" onClick={()=>go(providerLink.page)}>{providerLink.label}</button>}
   </nav>
   <div className="site-account">{user?<><span className="account-name"><span className="avatar">{user.name[0]}</span><b>{user.name}</b></span><button className="icon-button logout-button" aria-label="Cerrar sesión" onClick={()=>act(async()=>{await api('logout',{});setUser(null);setApplication(null);go('explore')})}><LogOut size={19}/><span>Cerrar sesión</span></button></>:<button className="secondary" onClick={()=>{setAuthDestination('explore');go('login')}}>Iniciar sesión</button>}
     <button ref={menuToggle} className="menu-toggle icon-button" aria-label={menuOpen?'Cerrar menú':'Abrir menú'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X/>:<Menu/>}</button>
   </div>
 </div></header>
 <div className="main"><main id="main-content" tabIndex={-1}>
-<div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}</div>
+<div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}{user&&providerLink&&<button className="text-link" onClick={()=>go(providerLink.page)}>{providerLink.label} <ArrowUpRight size={15}/></button>}</div>
 {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="notice" role="status"><Check size={18}/>{notice}</div>}
 {user&&page!=='demo'&&page!=='home'&&<RoleGuide user={user} application={application} selected={selected} page={page} onNavigate={go}/>}
 {page==='home'&&user&&<RoleHome role={role} user={user} application={application} onNavigate={go}/>}
@@ -91,17 +97,17 @@ return <div className="shell public-shell">
 </section>
 <HowItWorks onExplore={focusCatalog}/>
 </>}
-{profile&&<ProfilePage provider={profile} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>{if(user)go('create');else{setAuthDestination('create');go('login')}}}/>}
+{profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} ownTrade={ownTrade} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(profile.trade)}/>}
 {['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination);setAuthDestination('explore')}}/>}
 {page==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
   photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
   documentUpload={<Upload kind="document" label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
   onLogin={()=>{setAuthDestination('apply');go('login')}}
   onOpportunities={()=>go('available')}
-  onSubmit={async values=>{await api('apply',{...values,photo,document});await me();setNotice('Tu solicitud quedó Pendiente de revisión.')}}
+  onSubmit={async values=>{await api('apply',{...values,photo,document});await me();setNotice('Tu registro como proveedor quedó pendiente de revisión.')}}
 />}
-{page==='create'&&<CreateRequestPage onSubmit={async(values)=>{const r=await api('requests',values);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
-{page==='mine'&&!selected&&<MyRequests items={items} loading={loading} error={error} openingId={openingId} onOpen={id=>act(async()=>{await detail(id);window.scrollTo({top:0})})} onCreate={()=>go('create')}/>}
+{page==='create'&&<CreateRequestPage key={requestTrade} initialTrade={requestTrade===ownTrade?'':requestTrade} excludeTrade={ownTrade} onSubmit={async(values)=>{const r=await api('requests',values);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
+{page==='mine'&&!selected&&<MyRequests items={items} loading={loading} error={error} openingId={openingId} onOpen={id=>act(async()=>{await detail(id);window.scrollTo({top:0})})} onCreate={()=>startRequest()}/>}
 {['available','assigned'].includes(page)&&<ProviderWorkspace mode={page as 'available'|'assigned'} trade={application?.trade||''} items={items} selected={selected} loading={loading} error={error} openingId={openingId}
   onOpen={id=>act(async()=>{await detail(id);window.requestAnimationFrame(()=>window.document.getElementById('provider-detail')?.scrollIntoView({block:'start'}))})}
   onBack={()=>setSelected(null)}
@@ -122,13 +128,13 @@ return <div className="shell public-shell">
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
-{page==='admin'&&<AdminReview items={pendingApplications} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}}/>}
+{page==='admin'&&<AdminReview items={pendingApplications} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}}/>}
 {page==='demo'&&<DemoPage onEnter={enterDemo}/>}
 {page==='guide'&&<GuidePage onExplore={()=>{go('explore');window.requestAnimationFrame(focusCatalog)}}/>}
 </main><footer className="site-footer">
   <div><a className="brand" href="/"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a><p>Hogares más nuestros,<br/>un oficio a la vez.</p><small>Demostración académica · Sin pagos reales</small></div>
   {(!user||role==='cliente')&&<div><h3>Explorar</h3>{['Plomería','Electricidad','Carpintería'].map(t=><button key={t} onClick={()=>selectTrade(t)}>{t}</button>)}<button onClick={()=>selectTrade('')}>Todos los oficios</button></div>}
-  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button><button onClick={()=>go('demo')}>Cuentas de presentación</button></>}</div>
+  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.filter(([key])=>key!=='group').map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button><button onClick={()=>go('demo')}>Cuentas de presentación</button></>}</div>
   <div className="footer-bottom"><span>© {new Date().getFullYear()} Trade · Proyecto académico</span><span>Fotografías ilustrativas generadas para Trade</span></div>
 </footer></div></div>
 }
