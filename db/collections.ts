@@ -14,8 +14,8 @@ export const collections: Record<string, Def> = {
   users: {
     key: "id",
     // photo: avatar file id; created_at: ISO date of registration (older accounts have none).
-    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: bool, photo: optStr, created_at: optStr },
-    optional: ["photo", "created_at"],
+    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: bool, photo: optStr, created_at: optStr, deactivated_reason: optStr },
+    optional: ["photo", "created_at", "deactivated_reason"],
     unique: [{ email: 1 }],
   },
   password_resets: {
@@ -31,7 +31,12 @@ export const collections: Record<string, Def> = {
   },
   providers: {
     key: "id",
-    fields: { id: str, trade: str, trades: { bsonType: "array", minItems: 1, items: str }, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: bool },
+    fields: { id: str, trade: str, trades: { bsonType: "array", minItems: 1, items: str }, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: bool,
+      // Admin decisions: who decided, when, and the reason the person sees.
+      reason: optStr, decided_by: optStr, decided_at: optStr, deactivated_reason: optStr,
+      // Trades added after approval wait here until an admin reviews them.
+      pending_trades: { bsonType: ["array", "null"], items: str } },
+    optional: ["reason", "decided_by", "decided_at", "deactivated_reason", "pending_trades"],
     index: [{ trade: 1, status: 1 }, { trades: 1 }],
   },
   requests: {
@@ -52,6 +57,12 @@ export const collections: Record<string, Def> = {
     fields: { id: str, owner: str, request: optStr, kind: str, mime: str, url: optStr },
     optional: ["request", "url"],
     index: [{ owner: 1 }, { request: 1 }],
+  },
+  audit_log: {
+    key: "id",
+    // One row per admin action: who did what to whom, and why.
+    fields: { id: str, at: str, actor: str, actor_name: str, action: str, target: optStr, target_name: optStr, detail: optStr },
+    index: [{ at: 1 }, { target: 1 }],
   },
   reviews: {
     key: "request",

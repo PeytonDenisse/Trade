@@ -1,5 +1,6 @@
 import {required,passwordHash} from './rules';
 import {sha256,type Ctx} from './api-context';
+import {audit} from './api-admin';
 
 const DAY=86400000;
 const clearCookie={'Set-Cookie':'trade_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'};
@@ -42,6 +43,7 @@ export async function accountPost(x:Ctx,path:string,b:any){
   const open=await x.one('password_resets',{user_id:target.id,status:{$in:['Solicitada','Enviada']}});
   if(open)await x.c('password_resets').updateOne({id:open.id},{$set:fields});
   else await x.c('password_resets').insertOne({id:x.id(),user_id:target.id,requested:new Date().toISOString(),...fields});
+  await audit(x,'password.link',target);
   return x.json({path:'/restablecer/'+token,expires:fields.expires});
  }
  if(path==='account'){

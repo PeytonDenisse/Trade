@@ -10,7 +10,7 @@ import {RemoteImage} from '../components/trade/remote-image';
 
 import {ProviderApplication,ProviderWorkspace} from '../components/trade/provider-workflow';
 import {MyRequests,RequestJourney} from '../components/trade/request-journey';
-import {AdminReview} from '../components/trade/admin-demo';
+import {AdminPortal} from '../components/admin/admin-portal';
 import {pathFor,parsePath} from '../lib/routes';
 import {FeedbackProvider,useToast} from '../components/feedback/feedback-provider';
 import {AccountMenu} from '../components/account/account-menu';
@@ -59,7 +59,8 @@ const [requestTrade,setRequestTrade]=useState('');
 const [catalogQuery,setCatalogQuery]=useState('');
 // Provider the client is asking directly from their profile; null means open to all.
 const [requestTarget,setRequestTarget]=useState<{id:string;name:string;trades:string[]}|null>(null);
-const [people,setPeople]=useState<any[]>([]);
+// Admin section (/admin/:tab) and the person page open in it (/admin/personas/:id).
+const [adminTab,setAdminTab]=useState('tablero'),[personId,setPersonId]=useState('');
 const [resetToken,setResetToken]=useState('');
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
 // The provider's own trade can't be requested; an empty trade means the client chooses.
@@ -71,7 +72,7 @@ const view=page==='home'?homeFor(user,application):page;
 // Client-side search over the loaded catalog: name or zone.
 const catalogNeedle=catalogQuery.trim().toLowerCase();
 const shownProviders=catalogNeedle?providers.filter(p=>[p.name,p.zone].some((v:any)=>String(v||'').toLowerCase().includes(catalogNeedle))):providers;
-async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(view==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(view)){const result=await api('requests?scope='+view);if(sequence===loadSequence.current)setItems(view==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}if(view==='admin'){const [result,users]=await Promise.all([api('applications'),api('users')]);if(sequence===loadSequence.current){setItems(result);setPeople(users)}}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
+async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(view==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(view)){const result=await api('requests?scope='+view);if(sequence===loadSequence.current)setItems(view==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
 useEffect(()=>{load()},[view,filter]);
 // Pages that need a session; visitors who open them by link are sent to log in first.
 const privatePages=['home','mine','create','apply','available','assigned','account','saved','admin'];
@@ -87,6 +88,7 @@ async function openPath(pathname:string,u:any,app:any){
     go(target,u,app);
     if(r.trade)setFilter(r.trade);
     if(r.token)setResetToken(r.token);
+    if(r.page==='admin'){setAdminTab(r.adminTab||'tablero');setPersonId(r.personId||'')}
     if(r.providerId)setProfile(await api('providers/'+r.providerId));
     if(r.requestId)await detail(r.requestId);
   }catch(e:any){setError(e.message)}
@@ -100,7 +102,7 @@ function go(p:string,u:any=user,app:any=application){
   const wasMobileMenuOpen=menuOpen;
   // Staying on the same page starts no new load, so the current one must be allowed to finish.
   if(p!==page)loadSequence.current++;
-  setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setJustPublishedId('');setError('');
+  setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setJustPublishedId('');setError('');setPersonId('');if(p==='home')setAdminTab('tablero');
   if(wasMobileMenuOpen)window.requestAnimationFrame(()=>window.document.getElementById('main-content')?.focus({preventScroll:true}));
 }
 function signedOut(){setUser(null);setApplication(null);go('explore',null,null)}
@@ -111,7 +113,7 @@ async function change(path:string,data:any){await api(path,data);await detail(se
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
 const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
 // Browser address for the current screen (design PDF 10.1); Back and shared links use it.
-const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='home'?(selected?view:'home'):page,trade:page==='explore'?filter:undefined,providerId:profile?.id,requestId:selected?.id,token:resetToken});
+const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='home'?(selected?view:'home'):page,trade:page==='explore'?filter:undefined,providerId:profile?.id,requestId:selected?.id,token:resetToken,adminTab,personId});
 useEffect(()=>{if(!applyingUrl.current&&window.location.pathname!==path)window.history.pushState(null,'',path)},[path]);
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
 const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
@@ -174,7 +176,7 @@ return <div className="shell public-shell">
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}
-{view==='admin'&&<AdminReview items={items} people={people} loading={loading} error={error} onApprove={async id=>{await api('approve',{id});await load()}} onReject={async id=>{await api('reject',{id});await load()}} onSetActive={async(kind,id,active)=>{await api(kind==='account'?'account-active':'provider-active',{id,active});await load()}}/>}
+{view==='admin'&&user&&<AdminPortal api={api} tab={adminTab} personId={personId} me={user.id} onTab={tab=>{setAdminTab(tab);setPersonId('');window.scrollTo({top:0})}} onPerson={id=>{setPersonId(id);window.scrollTo({top:0})}}/>}
 
 {page==='account'&&user&&<AccountPage key={user.id} user={user}
   photoUpload={<Upload kind="avatar" label={user.photo?'Cambiar foto':'Subir foto'} onDone={async(id:string)=>{await api('account',{photo:id});await me();toast('Foto actualizada.')}}/>}
