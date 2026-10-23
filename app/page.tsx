@@ -112,7 +112,7 @@ function go(p:string,u:any=user,app:any=application){
 function signedOut(){setUser(null);setApplication(null);go('explore',null,null)}
 async function act(fn:()=>Promise<any>){setError('');try{await fn()}catch(e:any){setError(e.message)}}
 async function detail(id:string){setSelected(await api('requests/'+id))}
-async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();toast(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.'} as Record<string,string>)[path]||'Cambio guardado.')}
+async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();toast(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.',cancel:'Solicitud cancelada.',report:'Reporte enviado. Administración revisará el caso y verás su decisión en la solicitud.'} as Record<string,string>)[path]||'Cambio guardado.')}
 
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
 const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
@@ -177,6 +177,8 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
   onUpload={selected.id!==justPublishedId&&selected.status==='Activa'?<Upload kind="problem" request={selected.id} label="Adjuntar foto del problema" onDone={async()=>{await detail(selected.id);toast('Foto del problema añadida.')}}/>:undefined}
   onAccept={id=>change('accept',{id})}
   onConfirm={()=>change('confirm',{request:selected.id})}
+  onCancel={reason=>change('cancel',{request:selected.id,reason:reason||undefined})}
+  onReport={reason=>change('report',{request:selected.id,reason})}
   onStars={async stars=>{await api('review',{request:selected.id,stars});await detail(selected.id)}}
   onComment={async comment=>{await api('review',{request:selected.id,comment});await detail(selected.id)}}
 />}

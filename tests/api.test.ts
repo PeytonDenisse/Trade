@@ -200,3 +200,45 @@ test('Equipo y ajustes: permisos de administración y reglas de la plataforma',a
  await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document},luis.cookie,403);
  assert.ok(await db.collection('audit_log').findOne({action:'settings.update'}));assert.ok(await db.collection('audit_log').findOne({action:'role.admin'}));
 });
+test('Ciclo de solicitudes y moderación: cancelar, vencer, reportar, resolver y ocultar reseñas',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const ana=await request(env,'register',credentials('ana')),otro=await request(env,'register',credentials('otro'));
+ const luis=await request(env,'register',credentials('luis'));const luisId=(await request(env,'me',undefined,luis.cookie)).data.user.id;
+ const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document},luis.cookie,201);await request(env,'approve',{id:luisId},boss.cookie);
+ const post=async(description:string)=>(await request(env,'requests',{trade:'Plomería',description,date:'2099-01-01'},ana.cookie,201)).data.id as string;
+ // Cancel
+ const c1=await post('Cancelar');await request(env,'quote',{request:c1,price:300,description:'Visita'},luis.cookie,201);
+ await request(env,'cancel',{request:c1},otro.cookie,403);await request(env,'cancel',{request:c1,reason:'Ya lo arreglé'},ana.cookie);
+ const cancelled=(await request(env,'requests/'+c1,undefined,ana.cookie)).data;assert.equal(cancelled.status,'Cancelada');assert.equal(cancelled.closed_reason,'Ya lo arreglé');assert.equal(cancelled.quotes[0].status,'No seleccionada');
+ await request(env,'cancel',{request:c1},ana.cookie,409);
+ assert.ok(!(await request(env,'requests?scope=available',undefined,luis.cookie)).data.some((r:any)=>r.id===c1));
+ // Expiry
+ const old=await post('Vieja');await db.collection('requests').updateOne({id:old},{$set:{created:new Date(Date.now()-40*86400000).toISOString()}});
+ assert.equal((await request(env,'requests?scope=mine',undefined,ana.cookie)).data.find((r:any)=>r.id===old).status,'Vencida');
+ await request(env,'admin/settings',{requestExpiryDays:60},boss.cookie);const older=await post('Menos vieja');await db.collection('requests').updateOne({id:older},{$set:{created:new Date(Date.now()-40*86400000).toISOString()}});
+ assert.equal((await request(env,'requests/'+older,undefined,ana.cookie)).data.status,'Activa');
+ // Report → dispute → resolution
+ const job=await post('Fuga');await request(env,'quote',{request:job,price:800,description:'Reparación'},luis.cookie,201);
+ await request(env,'report',{request:job,reason:'x'},ana.cookie,409);
+ const quote=(await request(env,'requests/'+job,undefined,ana.cookie)).data.quotes[0].id;await request(env,'accept',{id:quote},ana.cookie);await request(env,'finish',{request:job},luis.cookie);
+ await request(env,'report',{request:job,reason:'Sigue goteando'},otro.cookie,403);
+ await request(env,'report',{request:job,reason:'Sigue goteando'},ana.cookie,201);await request(env,'report',{request:job,reason:'Otra vez'},luis.cookie,409);
+ const disputed=(await request(env,'requests/'+job,undefined,ana.cookie)).data;assert.equal(disputed.status,'En disputa');assert.equal(disputed.report.status,'Abierto');
+ await request(env,'confirm',{request:job},ana.cookie,409);
+ assert.equal((await request(env,'admin/summary',undefined,boss.cookie)).data.attention.reports,1);
+ const moderation=(await request(env,'admin/moderation',undefined,boss.cookie)).data;const open=moderation.reports[0];assert.equal(open.by_name,'ana');assert.equal(open.against_name,'luis');assert.equal(open.trade,'Plomería');
+ await request(env,'admin/report-resolve',{id:open.id,outcome:'Nada',resolution:'x'},boss.cookie,400);
+ await request(env,'admin/report-resolve',{id:open.id,outcome:'Terminado',resolution:'El proveedor volvió y cambió el empaque.'},boss.cookie);await request(env,'admin/report-resolve',{id:open.id,outcome:'Terminado',resolution:'otra'},boss.cookie,409);
+ assert.equal((await request(env,'requests/'+job,undefined,ana.cookie)).data.report.resolution,'El proveedor volvió y cambió el empaque.');
+ await request(env,'confirm',{request:job},ana.cookie);await request(env,'review',{request:job,stars:1,comment:'Insulto'},ana.cookie);
+ // Hide a review: it leaves the profile and the rating
+ assert.equal((await request(env,'providers/'+luisId)).data.reviews.length,1);
+ await request(env,'admin/review-hidden',{request:job,hidden:true},boss.cookie,400);await request(env,'admin/review-hidden',{request:job,hidden:true,reason:'Lenguaje ofensivo'},boss.cookie);
+ assert.equal((await request(env,'providers/'+luisId)).data.reviews.length,0);assert.equal((await request(env,'providers')).data.find((p:any)=>p.id===luisId).rating,null);
+ await request(env,'admin/review-hidden',{request:job,hidden:false},boss.cookie);assert.equal((await request(env,'providers')).data.find((p:any)=>p.id===luisId).rating,1);
+ // Admin closes a stuck request
+ const stuck=await post('Atorada');await request(env,'admin/request-close',{id:stuck},boss.cookie,400);await request(env,'admin/request-close',{id:stuck,reason:'Duplicada'},boss.cookie);await request(env,'admin/request-close',{id:stuck,reason:'Duplicada'},boss.cookie,409);
+ assert.equal((await request(env,'requests/'+stuck,undefined,ana.cookie)).data.closed_reason,'Duplicada');
+ await request(env,'admin/moderation',undefined,ana.cookie,403);
+});

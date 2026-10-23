@@ -7,6 +7,7 @@ import {accountGet,accountPost} from './api-account';
 import {adminGet,adminPost} from './api-admin';
 import {tradeNames} from './trades-db';
 import {getSettings} from './settings-db';
+import {expireRequests,lifecyclePost} from './api-lifecycle';
 import type {Ctx} from './api-context';
 type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string,MONGODB_FILES?:string};
 const json=(data:any,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
@@ -60,6 +61,8 @@ async function route(req:Request,env:Env,db:Db){
  try{
  if(req.method!=='GET') {const origin=req.headers.get('origin');if(origin&&origin!==url.origin)fail('Origen no permitido.',403);if(Number(req.headers.get('content-length')||0)>5500000)fail('El archivo supera el límite.',413)}
  if(req.method==='GET'){
+ // Overdue active requests become Vencida before anyone reads them.
+ if(path.startsWith('requests')||path==='admin/summary'||path==='admin/moderation')await expireRequests(ctx);
  if(path==='demo-status'){
   if(env.DEMO_ENABLED!=='true')return json({enabled:false,requests:[]});
   const ids=['presentation-new','presentation-active','presentation-assigned','presentation-finished','presentation-completed'];
@@ -71,10 +74,10 @@ async function route(req:Request,env:Env,db:Db){
  // What visitors need to know before signing up.
  if(path==='settings'){const s=await getSettings(db);return json({registrationOpen:s.registrationOpen,providerApplicationsOpen:s.providerApplicationsOpen})}
  if(path==='me')return json({user,application:user?await one('providers',{id:user.id}):null});
- if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...ACTIVE,...(t?{trades:t}:{})}},...withActiveAccount,{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:'$_r.stars'}}},...withName('id','name'),...withPhotoUrl,{$project:{document:0,_r:0}}]))}
- if(path.startsWith('providers/')){const pid=path.split('/')[1];const [p]=await agg('providers',[{$match:{id:pid,status:'Aprobada',...ACTIVE}},...withActiveAccount,...withName('id','name'),...withPhotoUrl,{$project:{document:0}}]);if(!p)fail('Proveedor no encontrado.',404);const done=(await all('requests',{provider:pid,status:'Completado'},{},{id:1})).map(r=>r.id);return json({...p,works:await all('files',{request:{$in:done},kind:{$in:['before','after']}},{},{id:1,kind:1,request:1,url:1}),reviews:await all('reviews',{provider:pid},{},{stars:1,comment:1})})}
+ if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...ACTIVE,...(t?{trades:t}:{})}},...withActiveAccount,{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:{$map:{input:{$filter:{input:'$_r',cond:{$ne:['$$this.hidden',true]}}},in:'$$this.stars'}}}}},...withName('id','name'),...withPhotoUrl,{$project:{document:0,_r:0}}]))}
+ if(path.startsWith('providers/')){const pid=path.split('/')[1];const [p]=await agg('providers',[{$match:{id:pid,status:'Aprobada',...ACTIVE}},...withActiveAccount,...withName('id','name'),...withPhotoUrl,{$project:{document:0}}]);if(!p)fail('Proveedor no encontrado.',404);const done=(await all('requests',{provider:pid,status:'Completado'},{},{id:1})).map(r=>r.id);return json({...p,works:await all('files',{request:{$in:done},kind:{$in:['before','after']}},{},{id:1,kind:1,request:1,url:1}),reviews:await all('reviews',{provider:pid,hidden:{$ne:true}},{},{stars:1,comment:1})})}
  if(path==='requests'){auth();const scope=url.searchParams.get('scope');if(scope==='available'){const p=await provider();return json(await agg('requests',[{$match:{trade:{$in:tradesOf(p)},status:'Activa',owner:{$ne:user.id},$or:[{target:null},{target:{$exists:false}},{target:user.id}]}},{$sort:{created:-1}},...withName('owner','owner_name'),...withProblemFile]))}if(scope==='assigned')return json(await agg('requests',[{$match:{provider:user.id}},{$sort:{created:-1}},...withProblemFile]));return json(await agg('requests',[{$match:{owner:user.id}},{$sort:{created:-1}},...withProblemFile,...withName('target','target_name')]))}
- if(path.startsWith('requests/')){auth();const r=await own(path.split('/')[1]);const p=await approved(user.id);const participant=r.owner===user.id||r.provider===user.id;if(!participant&&!(tradesOf(p).includes(r.trade)&&r.status==='Activa'&&openTo(r,user.id)))fail('No tienes acceso a este servicio.',403);const target:any=r.target?await one('users',{id:r.target},{name:1}):null;return json({...r,target_name:target?.name,quotes:await agg('quotes',[{$match:{request:r.id,...(r.owner===user.id?{}:{provider:user.id})}},...withName('provider','provider_name')]),files:await all('files',{request:r.id},{},{id:1,kind:1,url:1}),review:await one('reviews',{request:r.id})})}
+ if(path.startsWith('requests/')){auth();const r=await own(path.split('/')[1]);const p=await approved(user.id);const participant=r.owner===user.id||r.provider===user.id;if(!participant&&!(tradesOf(p).includes(r.trade)&&r.status==='Activa'&&openTo(r,user.id)))fail('No tienes acceso a este servicio.',403);const target:any=r.target?await one('users',{id:r.target},{name:1}):null;return json({...r,target_name:target?.name,quotes:await agg('quotes',[{$match:{request:r.id,...(r.owner===user.id?{}:{provider:user.id})}},...withName('provider','provider_name')]),files:await all('files',{request:r.id},{},{id:1,kind:1,url:1}),review:await one('reviews',{request:r.id}),report:(await all('reports',{request:r.id},{created:-1},{id:1,status:1,reason:1,resolution:1,created:1,by:1}))[0]||null})}
  if(path.startsWith('files/')){const f:any=await one('files',{id:path.split('/')[1]});if(!f)fail('Archivo no encontrado.',404);let allowed=false;if(f.kind==='photo')allowed=!!await one('providers',{photo:f.id,status:'Aprobada'});if(f.request){const r=await own(f.request);allowed=r.status==='Completado'&&['before','after'].includes(f.kind);if(user){const p=await approved(user.id);allowed=allowed||r.owner===user.id||r.provider===user.id||(f.kind==='problem'&&r.status==='Activa'&&tradesOf(p).includes(r.trade)&&openTo(r,user.id))}}if(user&&(f.owner===user.id||user.role==='admin'||f.kind==='avatar'))allowed=true;if(!allowed)fail('No tienes acceso al archivo.',403);const obj=await env.BUCKET.get(f.id);if(!obj)fail('Archivo no encontrado.',404);return new Response(obj.body,{headers:{'Content-Type':f.mime,'X-Content-Type-Options':'nosniff','Cache-Control':'private, max-age=31536000, immutable'}})}
  const reply=await accountGet(ctx,path)??await adminGet(ctx,path);if(reply)return reply;
  return json({error:'Ruta no encontrada.'},404);
@@ -96,7 +99,7 @@ async function route(req:Request,env:Env,db:Db){
  }
  if(path==='logout'){if(token)await c('sessions').deleteOne({token});return json({ok:true},200,{'Set-Cookie':'trade_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'})}
  auth();
- const adminReply=await adminPost(ctx,path,b);if(adminReply)return adminReply;
+ const adminReply=await adminPost(ctx,path,b)??await lifecyclePost(ctx,path,b);if(adminReply)return adminReply;
  // Trades offered right now; new registrations and requests must use one of them.
  const offered=['apply','requests'].includes(path)?await tradeNames(db):[];
  // A rejected provider may send a new registration; any other existing one blocks it.

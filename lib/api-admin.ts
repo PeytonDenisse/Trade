@@ -65,6 +65,16 @@ export async function adminGet(x:Ctx,path:string){
   ]);
   return x.json({person,registration:registration||null,requests,jobs,reviews,history,recovery});
  }
+ // Moderación: problem reports, reviews and requests that have been waiting the longest.
+ if(path==='admin/moderation'){
+  admin(x);const names=(field:string,as:string)=>[{$lookup:{from:'users',localField:field,foreignField:'id',as:'_'+as}},{$set:{[as]:{$first:'$_'+as+'.name'}}},{$project:{['_'+as]:0}}];
+  const [reports,reviews,waiting]=await Promise.all([
+   x.agg('reports',[{$sort:{status:1,created:-1}},{$limit:40},...names('by','by_name'),...names('against','against_name'),{$lookup:{from:'requests',localField:'request',foreignField:'id',as:'_r'}},{$set:{trade:{$first:'$_r.trade'},request_status:{$first:'$_r.status'},description:{$first:'$_r.description'}}},{$project:{_id:0,_r:0}}]),
+   x.agg('reviews',[{$lookup:{from:'requests',localField:'request',foreignField:'id',as:'_r'}},{$set:{created:{$first:'$_r.created'},trade:{$first:'$_r.trade'}}},{$sort:{created:-1}},{$limit:40},...names('provider','provider_name'),...names('owner','owner_name'),{$project:{_id:0,_r:0}}]),
+   x.agg('requests',[{$match:{status:{$in:['Activa','Asignada']}}},{$sort:{created:1}},{$limit:20},...names('owner','owner_name'),{$project:{_id:0,id:1,trade:1,status:1,created:1,description:1,owner_name:1}}]),
+  ]);
+  return x.json({reports,reviews,waiting});
+ }
  if(path==='admin/team'){admin(x);return x.json(await x.all('users',{role:'admin'},{name:1},{id:1,name:1,email:1,active:1,created_at:1}))}
  if(path==='admin/settings'){admin(x);return x.json(await getSettings(x.db))}
  // Oficios with how many providers offer each one and how many requests use it.
@@ -147,6 +157,34 @@ export async function adminPost(x:Ctx,path:string,b:any){
   }
   await x.c('users').updateOne({id:person.id},{$set:{role:b.admin?'admin':'cliente'}});
   await audit(x,b.admin?'role.admin':'role.remove',person);
+  return x.json({ok:true});
+ }
+ // A report ends with a written decision and the state the job continues in.
+ if(path==='admin/report-resolve'){
+  admin(x);const report=await x.one('reports',{id:x.sid(b.id),status:'Abierto'});if(!report)x.fail('El reporte ya está resuelto.',409);
+  const outcome=String(b.outcome||'');if(!['Asignada','Terminado','Completado','Cancelada'].includes(outcome))x.fail('Elige cómo continúa el trabajo.');
+  const resolution=required(b.resolution,'Decisión',1000);
+  await x.c('reports').updateOne({id:report.id},{$set:{status:'Resuelto',resolution,resolved_by:x.user.id,resolved_at:new Date().toISOString()}});
+  await x.c('requests').updateOne({id:report.request,status:'En disputa'},{$set:{status:outcome,...(outcome==='Cancelada'?{closed_reason:resolution}:{})}});
+  await audit(x,'report.resolve',await x.one('users',{id:report.against},{id:1,name:1}),`${outcome}: ${resolution}`);
+  return x.json({ok:true});
+ }
+ // Hidden reviews stay stored but leave the public profile and the rating.
+ if(path==='admin/review-hidden'){
+  admin(x);if(typeof b.hidden!=='boolean')x.fail('Datos inválidos.');
+  const review=await x.one('reviews',{request:x.sid(b.request)});if(!review)x.fail('Reseña no encontrada.',404);
+  const why=b.hidden?required(b.reason,'Motivo',300):null;
+  await x.c('reviews').updateOne({request:review.request},{$set:{hidden:b.hidden,hidden_reason:why}});
+  await audit(x,b.hidden?'review.hide':'review.show',await x.one('users',{id:review.provider},{id:1,name:1}),why);
+  return x.json({ok:true});
+ }
+ if(path==='admin/request-close'){
+  admin(x);const r=await x.one('requests',{id:x.sid(b.id)});if(!r)x.fail('Solicitud no encontrada.',404);
+  if(!['Activa','Asignada','En disputa'].includes(r.status))x.fail('Esta solicitud ya está cerrada.',409);
+  const why=required(b.reason,'Motivo',300);
+  await x.c('requests').updateOne({id:r.id},{$set:{status:'Cancelada',closed_reason:why}});
+  await x.c('quotes').updateMany({request:r.id,status:'Pendiente'},{$set:{status:'No seleccionada'}});
+  await audit(x,'request.close',await x.one('users',{id:r.owner},{id:1,name:1}),`${r.trade}: ${why}`);
   return x.json({ok:true});
  }
  if(path==='admin/settings'){

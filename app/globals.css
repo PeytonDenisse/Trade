@@ -384,3 +384,29 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .setting-toggle small { color: var(--muted); }
 .setting-number input { max-width: 140px; }
 .settings-save { display: flex; gap: 12px; align-items: center; }
+/* Request lifecycle and moderation */
+.journey-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 14px; }
+.report-note { display: grid; gap: 4px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: #fff7ee; border: 1px solid #e8c9a8; }
+.report-note.is-resolved { background: #e3f0e8; border-color: #b9d8c5; }
+.status[data-status="Cancelada"], .status[data-status="Vencida"] { background: #ece8e4; color: #5d5650; }
+.status[data-status="En disputa"] { background: #fbe3cf; color: #8a3d12; }
+.moderation { display: grid; gap: 30px; }
+.report-list { display: grid; gap: 12px; }
+.report-card { display: grid; gap: 10px; padding: 16px; border: 1px solid #e8c9a8; border-radius: 14px; background: var(--surface); }
+.report-card header { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.report-card header small { color: var(--muted); }
+.report-card p { margin: 0; }
+.report-reason { font-size: 16px; }
+.report-resolve { display: grid; gap: 10px; justify-items: start; padding-top: 10px; border-top: 1px solid var(--border); }
+.report-resolve select, .report-resolve textarea { font: inherit; font-weight: 400; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.resolved-reports { margin-top: 12px; }
+.resolved-reports summary { cursor: pointer; color: var(--action); }
+.resolved-reports ul { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.review-moderation { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.review-moderation li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.review-moderation li.is-hidden { opacity: .65; }
+.review-moderation li > span:nth-child(2) { flex: 1; display: grid; gap: 2px; min-width: 200px; }
+.review-moderation small { color: var(--muted); }
+.review-moderation .stars { color: #b7791f; letter-spacing: 1px; }
+.waiting-list li { grid-template-columns: auto 1fr auto; }
+.waiting-actions { display: flex; gap: 10px; align-items: center; }

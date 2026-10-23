@@ -42,8 +42,10 @@ export const collections: Record<string, Def> = {
   requests: {
     key: "id",
     // target: provider the client asked directly; empty means any approved provider of the trade.
-    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str, target: optStr },
-    optional: ["provider", "quote", "target"],
+    // status: Activa → Asignada → Terminado → Completado, or Cancelada / Vencida / En disputa.
+    // closed_reason: why it was cancelled (by the client or administration).
+    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str, target: optStr, closed_reason: optStr },
+    optional: ["provider", "quote", "target", "closed_reason"],
     index: [{ owner: 1 }, { provider: 1 }, { trade: 1, status: 1 }, { target: 1 }],
   },
   quotes: {
@@ -63,6 +65,12 @@ export const collections: Record<string, Def> = {
     // The trades the platform offers; inactive ones leave the catalog and new requests.
     fields: { name: str, active: bool, order: num },
   },
+  reports: {
+    key: "id",
+    // A problem reported on a job (Abierto → Resuelto); by: who reported, against: the other party.
+    fields: { id: str, request: str, by: str, against: optStr, reason: str, status: str, created: str, previous_status: str, resolution: optStr, resolved_by: optStr, resolved_at: optStr },
+    index: [{ request: 1 }, { status: 1 }],
+  },
   settings: {
     key: "key",
     // One document (key "app") with the platform settings administration can change.
@@ -77,8 +85,9 @@ export const collections: Record<string, Def> = {
   },
   reviews: {
     key: "request",
-    fields: { request: str, provider: str, owner: str, stars: { bsonType: ["int", "null"], minimum: 1, maximum: 5 }, comment: optStr },
-    optional: ["stars", "comment"],
+    // hidden: an admin took it off the public profile and the rating (hidden_reason says why).
+    fields: { request: str, provider: str, owner: str, stars: { bsonType: ["int", "null"], minimum: 1, maximum: 5 }, comment: optStr, hidden: { bsonType: ["bool", "null"] }, hidden_reason: optStr },
+    optional: ["stars", "comment", "hidden", "hidden_reason"],
     index: [{ provider: 1 }],
   },
 };
