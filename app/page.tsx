@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import {api,readApiResponse} from '../lib/http-client';
-import {Menu,X,House,Search,ShieldCheck,ArrowUpRight,ArrowRight,Plus,Wrench,UserRound,RefreshCw,Briefcase,ClipboardList,Camera,ChevronLeft} from 'lucide-react';
+import {Menu,X,House,Search,ShieldCheck,ArrowRight,Plus,Wrench,UserRound,RefreshCw,Briefcase,ClipboardList,Camera,ChevronLeft,CheckCircle2,LockKeyhole} from 'lucide-react';
 import {trades,isActive,tradesOf} from '../lib/rules';
 import {TradesContext} from '../components/trade/trades-context';
 import {Hero,PopularTrades,ProfessionalCard,HomeBanner,GuidePage} from '../components/trade/marketing';
@@ -20,14 +20,17 @@ import {AccountPage} from '../components/account/account-page';
 import {ForgotPage,ResetPage} from '../components/account/password-recovery';
 
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
-function Upload({kind,request,onDone,label}:any){
+function Upload({kind,request,currentId,onDone,label}:{kind:'photo'|'document'|'problem'|'before'|'after'|'avatar';request?:string;currentId?:string;onDone:(id:string)=>void|Promise<void>;label:string}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
-  return <div className="upload-field"><label className="upload"><Camera size={20}/><span>{busy?'Subiendo…':label}</span><input aria-label={label} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={async e=>{
-    const f=e.target.files?.[0];if(!f)return;setError('');
-    if(!['image/png','image/jpeg','image/webp'].includes(f.type)){setError('Selecciona una imagen PNG, JPG o WebP.');e.target.value='';return}
-    if(f.size===0||f.size>5*1024*1024){setError('La imagen debe contener datos y pesar como máximo 5 MB.');e.target.value='';return}
-    setBusy(true);try{const d=new FormData();d.set('file',f);d.set('kind',kind);if(request)d.set('request',request);const r=await fetch('/api/upload',{method:'POST',body:d});const j=await readApiResponse<{id:string}>(r);await onDone(j.id)}catch(e:any){setError(e.message)}finally{setBusy(false);e.target.value=''}
-  }}/></label>{error&&<p className="field-error" role="alert">{error}</p>}</div>
+  const [selectedName,setSelectedName]=useState('');
+  const [uploaded,setUploaded]=useState<{id:string;name:string}|null>(null);
+  const shown=uploaded?.id===currentId||!currentId?uploaded:currentId?{id:currentId,name:''}:null;
+  return <div className="upload-field"><label className="upload upload-picker"><Camera size={20} aria-hidden="true"/><span>{busy?'Subiendo imagen…':label}</span><small>{busy&&selectedName?selectedName:'Elegir imagen · PNG, JPG o WebP · Máximo 5 MB'}</small><input className="upload-file-input" aria-label={label} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={async e=>{
+    const f=e.target.files?.[0];if(!f)return;setError('');setSelectedName(f.name);
+    if(!['image/png','image/jpeg','image/webp'].includes(f.type)){setError('Selecciona una imagen PNG, JPG o WebP.');setSelectedName('');e.target.value='';return}
+    if(f.size===0||f.size>5*1024*1024){setError('La imagen debe contener datos y pesar como máximo 5 MB.');setSelectedName('');e.target.value='';return}
+    setBusy(true);try{const d=new FormData();d.set('file',f);d.set('kind',kind);if(request)d.set('request',request);const r=await fetch('/api/upload',{method:'POST',body:d});const j=await readApiResponse<{id?:string}>(r);if(!j.id)throw new Error('No se pudo subir la imagen.');await onDone(j.id);setUploaded({id:j.id,name:f.name})}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo subir la imagen.')}finally{setBusy(false);setSelectedName('');e.target.value=''}
+  }}/></label>{busy&&<p className="upload-progress" role="status">Subiendo {selectedName}…</p>}{shown&&<div className="upload-confirmation" role="status">{kind==='document'?<LockKeyhole size={21} aria-hidden="true"/>:<RemoteImage src={'/api/files/'+shown.id} alt="Vista previa de la imagen cargada"/>}<span><strong>Imagen cargada</strong>{shown.name&&<small title={shown.name}>{shown.name}</small>}{kind==='document'&&<small>Documento privado</small>}</span><CheckCircle2 size={19} aria-hidden="true"/></div>}{error&&<p className="field-error" role="alert">{error}</p>}</div>
 }
 export default function Page(){return <FeedbackProvider><Home/></FeedbackProvider>}
 function Home(){
@@ -127,7 +130,7 @@ async function detail(id:string){setSelected(await api('requests/'+id))}
 async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();toast(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.',cancel:'Solicitud cancelada.',report:'Reporte enviado. Administración revisará el caso y verás su decisión en la solicitud.'} as Record<string,string>)[path]||'Cambio guardado.')}
 
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
-const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
+const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
 // Browser address for the current screen (design PDF 10.1); Back and shared links use it.
 const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='home'?(selected?view:'home'):page,trade:page==='explore'?filter:undefined,providerId:profile?.id,requestId:selected?.id,token:resetToken,adminTab,personId});
 useEffect(()=>{if(sessionState==='ready'&&!applyingUrl.current&&window.location.pathname!==path)window.history.pushState(null,'',path)},[path,sessionState]);
@@ -150,15 +153,14 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
 <header className="site-header"><div className="site-header-inner">
   <a className="brand" href="/" aria-label="Trade inicio"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a>
   <nav ref={navigation} id="site-navigation" aria-label="Navegación principal" className={menuOpen?'site-navigation is-open':'site-navigation'}>
-    {nav.map(([key,label,Icon])=>key==='group'?<span key={label} className="nav-group-label">{label}</span>:<button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination('');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
-    {providerLink&&<button className="mobile-offer" onClick={()=>go(providerLink.page)}>{providerLink.label}</button>}
+    {nav.map(([key,label,Icon])=><button key={key} className={page===key?'active':''} aria-current={page===key?'page':undefined} onClick={()=>{if(!['explore','guide','demo'].includes(key)&&!user){setAuthDestination('');go('login')}else go(key)}}><Icon size={17}/>{label}</button>)}
   </nav>
   <div className="site-account">{user?<AccountMenu user={user} role={role} onAccount={()=>go('account')} onGuide={()=>{go('guide');window.scrollTo({top:0})}} onProfile={application?.status==='Aprobada'?()=>act(async()=>{go('explore');setProfile(await api('providers/'+user.id));window.scrollTo({top:0})}):undefined} onLogout={()=>act(async()=>{await api('logout',{});signedOut()})}/>:<button className="secondary" onClick={()=>{setAuthDestination('');go('login')}}>Iniciar sesión</button>}
     <button ref={menuToggle} className="menu-toggle icon-button" aria-label={menuOpen?'Cerrar menú':'Abrir menú'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={()=>setMenuOpen(!menuOpen)}>{menuOpen?<X/>:<Menu/>}</button>
   </div>
 </div></header>
 <div className="main"><main id="main-content" tabIndex={-1}>
-<div className="site-context"><span>Servicios para tu hogar y negocio</span><span className="demo">POC · Datos de demostración</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}{user&&providerLink&&<button className="text-link" onClick={()=>go(providerLink.page)}>{providerLink.label} <ArrowUpRight size={15}/></button>}</div>
+<div className="site-context"><span>Servicios para tu hogar y negocio</span>{user&&<span className="demo-actor">Espacio de {role==='admin'?'administrador':role}</span>}</div>
 {['explore','home','mine','available','assigned','apply','account','admin'].includes(page)&&<div className="page-refresh"><button className="secondary" disabled={refreshing||loading} onClick={()=>void refreshCurrent()}><RefreshCw size={16} className={refreshing?'is-spinning':''}/>{refreshing?'Actualizando…':'Actualizar'}</button><span role="status">{refreshing?'Consultando los cambios más recientes.':''}</span></div>}
 {error&&<div className="error" role="alert">{error}</div>}
 
@@ -177,8 +179,8 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
 {profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrades={ownTrades} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(tradesOf(profile).find(t=>!ownTrades.includes(t))||'',{id:profile.id,name:profile.name,trades:tradesOf(profile)})}/>}
 {['login','register'].includes(page)&&<AccessPage signupOpen={signupOpen} onExplore={focusCatalog} onForgot={()=>go('forgot')} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
 {view==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
-  photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
-  documentUpload={<Upload kind="document" label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
+  photoUpload={<Upload kind="photo" currentId={photo} label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
+  documentUpload={<Upload kind="document" currentId={document} label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
   onLogin={()=>{setAuthDestination('apply');go('login')}}
   onOpportunities={()=>go('available')}
   onSubmit={async values=>{await api('apply',{...values,photo,document});await me();toast('Tu registro como proveedor quedó pendiente de revisión.')}}
@@ -222,7 +224,7 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
 </main><footer className="site-footer">
   <div><a className="brand" href="/"><span className="brandmark"><House aria-hidden="true"/></span>Trade</a><p>Hogares más nuestros,<br/>un oficio a la vez.</p><small>Demostración académica · Sin pagos reales</small></div>
   {(!user||role==='cliente')&&<div><h3>Explorar</h3>{['Plomería','Electricidad','Carpintería'].map(t=><button key={t} onClick={()=>selectTrade(t)}>{t}</button>)}<button onClick={()=>selectTrade('')}>Todos los oficios</button></div>}
-  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.filter(([key])=>key!=='group').map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<><button onClick={()=>go('login')}>Iniciar sesión</button></>}</div>
+  <div><h3>{user?'Mi espacio':'Acceso'}</h3>{user?nav.map(([key,label])=><button key={key} disabled={role==='proveedor'&&application?.status!=='Aprobada'&&['available','assigned'].includes(key)} onClick={()=>{go(key);window.scrollTo({top:0})}}>{label}</button>):<button onClick={()=>go('login')}>Iniciar sesión</button>}{providerLink&&<button onClick={()=>{go(providerLink.page);window.scrollTo({top:0})}}>{providerLink.label}</button>}</div>
   <div className="footer-bottom"><span>© {new Date().getFullYear()} Trade · Proyecto académico</span><span>Fotografías ilustrativas generadas para Trade</span></div>
 </footer></div></div></TradesContext.Provider>
 }
