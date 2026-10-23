@@ -372,3 +372,15 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .import-upload { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 0; padding: 12px 18px; justify-self: start; cursor: pointer; }
 .import-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .row-actions .text-button { display: inline-flex; align-items: center; gap: 4px; }
+.team-admin, .settings-admin { display: grid; gap: 18px; }
+.team-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.team-list li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.team-list li > span:nth-child(2) { flex: 1; display: grid; gap: 2px; min-width: 180px; }
+.team-list li > span:nth-child(2) .text-button { justify-self: start; font-weight: 700; }
+.team-list small { color: var(--muted); }
+.setting-toggle { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.setting-toggle input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--action); flex: none; }
+.setting-toggle span { display: grid; gap: 2px; }
+.setting-toggle small { color: var(--muted); }
+.setting-number input { max-width: 140px; }
+.settings-save { display: flex; gap: 12px; align-items: center; }

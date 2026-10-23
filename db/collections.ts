@@ -63,6 +63,12 @@ export const collections: Record<string, Def> = {
     // The trades the platform offers; inactive ones leave the catalog and new requests.
     fields: { name: str, active: bool, order: num },
   },
+  settings: {
+    key: "key",
+    // One document (key "app") with the platform settings administration can change.
+    fields: { key: str, registrationOpen: bool, providerApplicationsOpen: bool, requestExpiryDays: num, maxOpenRequests: num, updated_at: optStr, updated_by: optStr },
+    optional: ["registrationOpen", "providerApplicationsOpen", "requestExpiryDays", "maxOpenRequests", "updated_at", "updated_by"],
+  },
   audit_log: {
     key: "id",
     // One row per admin action: who did what to whom, and why.

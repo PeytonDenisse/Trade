@@ -173,3 +173,30 @@ test('Oficios: catálogo administrado, renombrar, desactivar, importar y exporta
  const forbidden=await handle(new Request('https://trade.test/api/admin/export/personas',{headers:{cookie:ana.cookie}}),env);assert.equal(forbidden.status,403);
  assert.ok((await db.collection('audit_log').find({action:{$in:['trade.create','trade.rename','trade.deactivate','trade.import','data.export']}}).toArray()).length>=5);
 });
+test('Equipo y ajustes: permisos de administración y reglas de la plataforma',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});const bossId=(await request(env,'me',undefined,boss.cookie)).data.user.id;
+ const ana=await request(env,'register',credentials('ana'));
+ // Team
+ await request(env,'admin/role',{email:'ana@example.test',admin:true},ana.cookie,403);
+ await request(env,'admin/role',{email:'nadie@example.test',admin:true},boss.cookie,404);
+ await request(env,'admin/role',{id:bossId,admin:false},boss.cookie,403);
+ await request(env,'admin/role',{email:'ana@example.test',admin:true},boss.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.role,'admin');
+ assert.equal((await request(env,'admin/team',undefined,boss.cookie)).data.length,2);
+ await request(env,'admin/role',{email:'jefa@example.test',admin:false},ana.cookie);
+ const anaId=(await request(env,'me',undefined,ana.cookie)).data.user.id;await request(env,'admin/role',{id:anaId,admin:false},ana.cookie,403);
+ await db.collection('users').updateOne({id:bossId},{$set:{role:'admin'}});await db.collection('users').updateOne({id:bossId},{$set:{active:false}});
+ await request(env,'admin/role',{id:bossId,admin:false},ana.cookie,409);
+ await db.collection('users').updateOne({id:bossId},{$set:{active:true}});
+ const luis=await request(env,'register',credentials('luis'));const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document},luis.cookie,201);
+ await request(env,'admin/role',{email:'luis@example.test',admin:true},boss.cookie,409);
+ // Settings
+ assert.deepEqual((await request(env,'settings')).data,{registrationOpen:true,providerApplicationsOpen:true});
+ await request(env,'admin/settings',{maxOpenRequests:0},boss.cookie,400);await request(env,'admin/settings',{},boss.cookie,400);await request(env,'admin/settings',{registrationOpen:false},luis.cookie,403);
+ const saved=(await request(env,'admin/settings',{registrationOpen:false,providerApplicationsOpen:false,maxOpenRequests:1},boss.cookie)).data;assert.equal(saved.maxOpenRequests,1);assert.equal(saved.requestExpiryDays,30);
+ await request(env,'register',credentials('tarde'),'',403);
+ await request(env,'requests',{trade:'Plomería',description:'Una',date:'2099-01-01'},luis.cookie,201);await request(env,'requests',{trade:'Plomería',description:'Dos',date:'2099-01-01'},luis.cookie,409);
+ const rejected=await db.collection('users').findOne({email:'luis@example.test'});await request(env,'reject',{id:rejected!.id,reason:'Prueba'},boss.cookie);
+ await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document},luis.cookie,403);
+ assert.ok(await db.collection('audit_log').findOne({action:'settings.update'}));assert.ok(await db.collection('audit_log').findOne({action:'role.admin'}));
+});

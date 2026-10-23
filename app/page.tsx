@@ -65,6 +65,7 @@ const [adminTab,setAdminTab]=useState('tablero'),[personId,setPersonId]=useState
 const [resetToken,setResetToken]=useState('');
 // Active trades from the database (administration manages them).
 const [tradeNames,setTradeNames]=useState<string[]>(trades);
+const [signupOpen,setSignupOpen]=useState(true);
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
 // The provider's own trade can't be requested; an empty trade means the client chooses.
 function startRequest(trade='',target:{id:string;name:string;trades:string[]}|null=null){setRequestTrade(trade);setRequestTarget(target);if(user)go('create');else{setAuthDestination('create');go('login')}}
@@ -97,7 +98,7 @@ async function openPath(pathname:string,u:any,app:any,names:string[]=tradeNames)
   }catch(e:any){setError(e.message)}
   finally{window.requestAnimationFrame(()=>{applyingUrl.current=false})}
 }
-useEffect(()=>{Promise.all([me(),api('trades').catch(()=>trades)]).then(([d,names])=>{setTradeNames(names);return openPath(window.location.pathname,d.user,d.application,names)}).catch(e=>{setError(e.message);applyingUrl.current=false})},[]);
+useEffect(()=>{Promise.all([me(),api('trades').catch(()=>trades),api('settings').catch(()=>({registrationOpen:true}))]).then(([d,names,settings])=>{setTradeNames(names);setSignupOpen(settings.registrationOpen);return openPath(window.location.pathname,d.user,d.application,names)}).catch(e=>{setError(e.message);applyingUrl.current=false})},[]);
 useEffect(()=>{const onPop=()=>openPath(window.location.pathname,user,application);window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop)},[user,application]);
 function go(p:string,u:any=user,app:any=application){
   // Signed-in people reach their working page as Mi inicio; visitors have no Mi inicio.
@@ -149,7 +150,7 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
 <HowItWorks onExplore={focusCatalog} onGuide={()=>{go('guide');window.scrollTo({top:0})}}/>
 </>}
 {profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrades={ownTrades} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(tradesOf(profile).find(t=>!ownTrades.includes(t))||'',{id:profile.id,name:profile.name,trades:tradesOf(profile)})}/>}
-{['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onForgot={()=>go('forgot')} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
+{['login','register'].includes(page)&&<AccessPage signupOpen={signupOpen} onExplore={focusCatalog} onForgot={()=>go('forgot')} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
 {view==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
   photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
   documentUpload={<Upload kind="document" label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}

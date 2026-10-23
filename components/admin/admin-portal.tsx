@@ -1,11 +1,13 @@
 'use client';
-import {ClipboardCheck,Database,LayoutDashboard,Tags,UsersRound,type LucideIcon} from 'lucide-react';
+import {ClipboardCheck,Database,LayoutDashboard,Settings2,ShieldCheck,Tags,UsersRound,type LucideIcon} from 'lucide-react';
 import {Dashboard} from './dashboard';
 import {ReviewQueue} from './review-queue';
 import {People} from './people';
 import {PersonPage} from './person-page';
 import {TradesAdmin} from './trades-admin';
 import {DataTools} from './data-tools';
+import {Team} from './team';
+import {SettingsAdmin} from './settings-admin';
 import type {Api} from './shared';
 
 type Section={key:string;label:string;group:string;Icon:LucideIcon;intro:string};
@@ -15,6 +17,8 @@ export const sections:Section[]=[
   {key:'por-revisar',label:'Por revisar',group:'Operación',Icon:ClipboardCheck,intro:'Registros de proveedores y recuperaciones de contraseña pendientes.'},
   {key:'personas',label:'Personas',group:'Operación',Icon:UsersRound,intro:'Clientes, proveedores y administradores. Abre una ficha para ver todo de una persona.'},
   {key:'oficios',label:'Oficios',group:'Catálogo',Icon:Tags,intro:'Los oficios que se ofrecen en Trade. Renombrar actualiza perfiles y solicitudes.'},
+  {key:'equipo',label:'Equipo',group:'Sistema',Icon:ShieldCheck,intro:'Las personas con permisos de administración.'},
+  {key:'ajustes',label:'Ajustes',group:'Sistema',Icon:Settings2,intro:'Reglas de registro y solicitudes que aplica toda la plataforma.'},
   {key:'datos',label:'Datos',group:'Sistema',Icon:Database,intro:'Descarga la información en CSV o importa oficios.'},
 ];
 
@@ -34,6 +38,8 @@ export function AdminPortal({api,tab,personId,me,onTab,onPerson,onTradesChanged}
         {current.key==='por-revisar'&&<ReviewQueue api={api} onPerson={onPerson}/>}
         {current.key==='personas'&&<People api={api} onPerson={onPerson} onReview={()=>onTab('por-revisar')}/>}
         {current.key==='oficios'&&<TradesAdmin api={api} onChanged={onTradesChanged}/>}
+        {current.key==='equipo'&&<Team api={api} me={me} onPerson={onPerson}/>}
+        {current.key==='ajustes'&&<SettingsAdmin api={api}/>}
         {current.key==='datos'&&<DataTools api={api} onChanged={onTradesChanged}/>}
       </>}
     </div>

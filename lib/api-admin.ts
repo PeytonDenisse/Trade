@@ -1,6 +1,7 @@
 import {required} from './rules';
 import type {Ctx} from './api-context';
 import {tradeNames} from './trades-db';
+import {getSettings,settingsUpdate,type Settings} from './settings-db';
 
 // Administration (design PDF, section 7). Every change an admin makes is written to audit_log.
 const reason=(v:unknown,label='Motivo')=>v==null||v===''?null:required(v,label,300);
@@ -64,6 +65,8 @@ export async function adminGet(x:Ctx,path:string){
   ]);
   return x.json({person,registration:registration||null,requests,jobs,reviews,history,recovery});
  }
+ if(path==='admin/team'){admin(x);return x.json(await x.all('users',{role:'admin'},{name:1},{id:1,name:1,email:1,active:1,created_at:1}))}
+ if(path==='admin/settings'){admin(x);return x.json(await getSettings(x.db))}
  // Oficios with how many providers offer each one and how many requests use it.
  if(path==='admin/trades'){
   admin(x);await tradeNames(x.db);
@@ -126,6 +129,33 @@ async function tradesPost(x:Ctx,path:string,b:any){
 
 export async function adminPost(x:Ctx,path:string,b:any){
  if(path.startsWith('admin/trade')){admin(x);return tradesPost(x,path,b)}
+ // Equipo: give or remove admin rights; never one's own, and at least one admin always remains.
+ if(path==='admin/role'){
+  admin(x);if(typeof b.admin!=='boolean')x.fail('Datos inválidos.');
+  const filter=b.email!==undefined?{email:required(b.email,'Correo',254).toLowerCase()}:{id:x.sid(b.id)};
+  const person:any=await x.one('users',filter,{id:1,name:1,role:1,active:1});
+  if(!person)x.fail('No hay una cuenta con ese correo.',404);
+  if(person.id===x.user.id)x.fail('No puedes cambiar tus propios permisos.',403);
+  if(b.admin){
+   if(person.role==='admin')x.fail(`${person.name} ya es administrador.`,409);
+   if(person.active===false)x.fail('Reactiva la cuenta antes de darle permisos.',409);
+   // Admins don't offer services; a provider must leave that role first.
+   if(await x.one('providers',{id:person.id,status:{$ne:'Rechazada'}}))x.fail(`${person.name} tiene un registro de proveedor; un administrador no puede ofrecer servicios.`,409);
+  }else{
+   if(person.role!=='admin')x.fail(`${person.name} no es administrador.`,409);
+   if(await x.c('users').countDocuments({role:'admin',active:{$ne:false}})<=1)x.fail('Debe quedar al menos un administrador.',409);
+  }
+  await x.c('users').updateOne({id:person.id},{$set:{role:b.admin?'admin':'cliente'}});
+  await audit(x,b.admin?'role.admin':'role.remove',person);
+  return x.json({ok:true});
+ }
+ if(path==='admin/settings'){
+  admin(x);let update:Partial<Settings>;
+  try{update=settingsUpdate(b)}catch(e:any){x.fail(e.message)}
+  await x.c('settings').updateOne({key:'app'},{$set:{...update!,updated_at:new Date().toISOString(),updated_by:x.user.id},$setOnInsert:{key:'app'}},{upsert:true});
+  await audit(x,'settings.update',null,Object.entries(update!).map(([k,v])=>`${k}: ${v}`).join(', '));
+  return x.json(await getSettings(x.db));
+ }
  if(!['approve','reject','account-active','provider-active'].includes(path))return null;
  admin(x);
  const person:any=await x.one('users',{id:x.sid(b.id)},{id:1,name:1,role:1});

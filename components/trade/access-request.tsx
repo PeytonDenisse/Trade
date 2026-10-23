@@ -73,12 +73,12 @@ function AuthCard({ mode, onSubmit, onForgot }: { mode: AuthMode; onSubmit: (mod
   </section>;
 }
 
-export function AccessPage({ onSubmit, onExplore, onForgot }: {
-  onSubmit: (mode: AuthMode, values: AuthValues) => Promise<void>; onExplore: () => void; onForgot?: () => void;
+export function AccessPage({ onSubmit, onExplore, onForgot, signupOpen = true }: {
+  onSubmit: (mode: AuthMode, values: AuthValues) => Promise<void>; onExplore: () => void; onForgot?: () => void; signupOpen?: boolean;
 }) {
   return <div className="access-page">
     <section className="access-intro"><div><p className="eyebrow">BIENVENIDO A TRADE</p><h1>Tu próximo proyecto <em>empieza aquí</em></h1><p>Encuentra profesionales de oficios, revisa su experiencia y recibe cotizaciones para tu hogar.</p><button className="secondary" onClick={onExplore}>Explorar profesionales <ArrowRight size={18}/></button></div><figure><RemoteImage src={designImages.plumbing} alt="Trabajo de plomería, fotografía ilustrativa" width={650} height={380}/><figcaption>Imagen ilustrativa</figcaption></figure></section>
-    <div className="access-grid"><AuthCard mode="login" onSubmit={onSubmit} onForgot={onForgot}/><AuthCard mode="register" onSubmit={onSubmit}/></div>
+    <div className="access-grid"><AuthCard mode="login" onSubmit={onSubmit} onForgot={onForgot}/>{signupOpen ? <AuthCard mode="register" onSubmit={onSubmit}/> : <section className="access-card"><h2>Crear cuenta</h2><p>El registro de cuentas nuevas está cerrado por ahora. Si ya tienes una cuenta, inicia sesión.</p></section>}</div>
   </div>;
 }
 
