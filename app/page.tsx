@@ -11,6 +11,7 @@ import {RemoteImage} from '../components/trade/remote-image';
 import {ProviderApplication,ProviderWorkspace} from '../components/trade/provider-workflow';
 import {MyRequests,RequestJourney} from '../components/trade/request-journey';
 import {AdminReview} from '../components/trade/admin-demo';
+import {pathFor,parsePath} from '../lib/routes';
 
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
 async function api(path:string,data?:any){const r=await fetch('/api/'+path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});const d:any=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo completar la operación.');return d}
@@ -64,9 +65,30 @@ const view=page==='home'?homeFor(user,application):page;
 const catalogNeedle=catalogQuery.trim().toLowerCase();
 const shownProviders=catalogNeedle?providers.filter(p=>[p.name,p.zone].some((v:any)=>String(v||'').toLowerCase().includes(catalogNeedle))):providers;
 async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(view==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(view)){const result=await api('requests?scope='+view);if(sequence===loadSequence.current)setItems(view==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}if(view==='admin'){const [result,users]=await Promise.all([api('applications'),api('users')]);if(sequence===loadSequence.current){setItems(result);setPeople(users)}}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
-useEffect(()=>{me().then(d=>{if(d.user)go('home')}).catch(e=>setError(e.message))},[]);useEffect(()=>{load()},[view,filter]);
-function go(p:string){
-  if(p==='admin'||p===homeFor(user,application))p='home';
+useEffect(()=>{load()},[view,filter]);
+// Pages that need a session; visitors who open them by link are sent to log in first.
+const privatePages=['home','mine','create','apply','available','assigned','account','saved','admin'];
+// True while the address is being turned into screen state, so that state is not pushed back.
+const applyingUrl=useRef(true);
+async function openPath(pathname:string,u:any,app:any){
+  applyingUrl.current=true;
+  try{
+    const r=parsePath(pathname,trades);
+    const target=r.page==='admin'?'home':r.page;
+    if(u&&pathname==='/'){go('home',u,app);return}
+    if(!u&&privatePages.includes(r.page)){setAuthDestination(target);go('login',u,app);return}
+    go(target,u,app);
+    if(r.trade)setFilter(r.trade);
+    if(r.providerId)setProfile(await api('providers/'+r.providerId));
+    if(r.requestId)await detail(r.requestId);
+  }catch(e:any){setError(e.message)}
+  finally{window.requestAnimationFrame(()=>{applyingUrl.current=false})}
+}
+useEffect(()=>{me().then(d=>openPath(window.location.pathname,d.user,d.application)).catch(e=>{setError(e.message);applyingUrl.current=false})},[]);
+useEffect(()=>{const onPop=()=>openPath(window.location.pathname,user,application);window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop)},[user,application]);
+function go(p:string,u:any=user,app:any=application){
+  // Signed-in people reach their working page as Mi inicio; visitors have no Mi inicio.
+  if(u&&(p==='admin'||p===homeFor(u,app)))p='home';
   const wasMobileMenuOpen=menuOpen;
   // Staying on the same page starts no new load, so the current one must be allowed to finish.
   if(p!==page)loadSequence.current++;
@@ -79,6 +101,9 @@ async function change(path:string,data:any){await api(path,data);await detail(se
 
 const role=user?.role==='admin'?'admin':user?.role==='proveedor'||application?'proveedor':'cliente';
 const nav=[...(user?[['home','Mi inicio',House]]:[]),...(user?.role==='admin'?[]:[['explore','Explorar oficios',Search],['guide','Cómo funciona',ShieldCheck]]),...(user?.role==='admin'||homeFor(user,application)==='mine'?[]:[['mine','Mis solicitudes',ClipboardList]]),...(application?.status==='Aprobada'?[['group','Como proveedor'],...(isActive(application)&&homeFor(user,application)!=='available'?[['available','Oportunidades',Briefcase]]:[]),['assigned','Mis trabajos',Wrench]]:[])] as any[];
+// Browser address for the current screen (design PDF 10.1); Back and shared links use it.
+const path=pathFor({page:page==='home'&&user?.role==='admin'?'admin':page==='home'?(selected?view:'home'):page,trade:page==='explore'?filter:undefined,providerId:profile?.id,requestId:selected?.id});
+useEffect(()=>{if(!applyingUrl.current&&window.location.pathname!==path)window.history.pushState(null,'',path)},[path]);
 // "Offer my services" only makes sense for clients who have not registered as providers yet.
 const providerLink=!user?{label:'Ofrecer mis servicios',page:'register'}:user.role==='admin'||application?.status==='Aprobada'?null:application?.status==='Pendiente'?{label:'Ver mi registro de proveedor',page:'apply'}:{label:'Ofrecer mis servicios',page:'apply'};
 return <div className="shell public-shell">
