@@ -215,3 +215,8 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .target-badge { display: inline-flex; align-self: flex-start; margin-top: 4px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #e3edf9; color: #245589; }
 .request-target { background: #f5e3d9; border-radius: 12px; padding: 12px 14px; }
 .request-target .text-button { margin: 4px 0 0; display: inline; }
+
+/* Client catalog: search by name or zone next to the Oficio filter. */
+.catalog-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.catalog-search input { min-height: 44px; border: 1px solid #baa394; background: #fffcf8; border-radius: 10px; padding: 9px 14px; color: var(--ink); font-size: 14px; min-width: 220px; }
+@media (max-width: 760px) { .catalog-controls { width: 100%; } .catalog-controls .catalog-filter, .catalog-search input { width: 100%; min-width: 0; } }

@@ -49,6 +49,7 @@ function focusCatalog(){setProfile(null);setPage('explore');window.requestAnimat
 function selectTrade(value:string){setFilter(value);go('explore');window.requestAnimationFrame(focusCatalog)}
 const [user,setUser]=useState<any>(null),[application,setApplication]=useState<any>(null),[page,setPage]=useState('explore'),[providers,setProviders]=useState<any[]>([]),[filter,setFilter]=useState(''),[items,setItems]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[profile,setProfile]=useState<any>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[photo,setPhoto]=useState(''),[document,setDocument]=useState('');
 const [requestTrade,setRequestTrade]=useState('');
+const [catalogQuery,setCatalogQuery]=useState('');
 // Provider the client is asking directly from their profile; null means open to all.
 const [requestTarget,setRequestTarget]=useState<{id:string;name:string;trades:string[]}|null>(null);
 const [people,setPeople]=useState<any[]>([]);
@@ -59,6 +60,9 @@ const ownTrades=application&&application.status!=='Rechazada'?tradesOf(applicati
 // Mi inicio is each role's working page, not a separate page of shortcuts.
 function homeFor(u:any,app:any){if(!u)return 'explore';if(u.role==='admin')return 'admin';if(app?.status==='Aprobada'&&app.active!==false)return 'available';if(app)return 'apply';return 'mine'}
 const view=page==='home'?homeFor(user,application):page;
+// Client-side search over the loaded catalog: name or zone.
+const catalogNeedle=catalogQuery.trim().toLowerCase();
+const shownProviders=catalogNeedle?providers.filter(p=>[p.name,p.zone].some((v:any)=>String(v||'').toLowerCase().includes(catalogNeedle))):providers;
 async function load(){const sequence=++loadSequence.current;setLoading(true);setError('');try{if(view==='explore'){const result=await api('providers'+(filter?'?trade='+encodeURIComponent(filter):''));if(sequence===loadSequence.current)setProviders(result)}if(['mine','available','assigned'].includes(view)){const result=await api('requests?scope='+view);if(sequence===loadSequence.current)setItems(view==='available'&&user?.id==='presentation-provider-login'?result.filter((r:any)=>r.owner==='presentation-client-login'):result)}if(view==='admin'){const [result,users]=await Promise.all([api('applications'),api('users')]);if(sequence===loadSequence.current){setItems(result);setPeople(users)}}}catch(e:any){if(sequence===loadSequence.current)setError(e.message)}finally{if(sequence===loadSequence.current)setLoading(false)}}
 useEffect(()=>{me().then(d=>{if(d.user)go('home')}).catch(e=>setError(e.message))},[]);useEffect(()=>{load()},[view,filter]);
 function go(p:string){
@@ -99,9 +103,9 @@ return <div className="shell public-shell">
 <PopularTrades onSelect={selectTrade}/>
 <section className="catalog professional-catalog" id="catalogo" tabIndex={-1}>
   <div className="section-head"><div><p className="eyebrow">PERSONAS QUE SABEN HACERLO</p><h2>{filter?'Resultados en '+filter:'Profesionales destacados'}</h2><p>Conoce su experiencia y solicita una cotización para tu proyecto.</p></div>
-  <label className="catalog-filter">Oficio<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Todos los oficios</option>{trades.map(t=><option key={t}>{t}</option>)}</select></label></div>
-  <div className="catalog-meta"><span>{providers.length} {providers.length===1?'perfil aprobado':'perfiles aprobados'}</span><span>Los perfiles de demostración y las imágenes ilustrativas están identificados.</span></div>
-  {loading?<p role="status">Buscando profesionales…</p>:providers.length?<div className={filter?'professional-grid is-filtered':'professional-grid'}>{providers.map(p=><ProfessionalCard key={p.id} provider={p} onOpen={()=>act(async()=>{setProfile(await api('providers/'+p.id));window.scrollTo({top:0})})}/>)}</div>:<div className="empty"><Wrench size={36}/><h3>No hay profesionales de este oficio</h3><p>Explora otros oficios o vuelve más tarde.</p><button className="secondary" onClick={()=>setFilter('')}>Ver todos los oficios <ArrowRight size={16}/></button></div>}
+  <div className="catalog-controls"><label className="catalog-filter catalog-search">Buscar<input type="search" value={catalogQuery} onChange={e=>setCatalogQuery(e.target.value)} placeholder="Nombre o zona"/></label><label className="catalog-filter">Oficio<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Todos los oficios</option>{trades.map(t=><option key={t}>{t}</option>)}</select></label></div></div>
+  <div className="catalog-meta"><span>{shownProviders.length} {shownProviders.length===1?'perfil aprobado':'perfiles aprobados'}{catalogQuery.trim()?` para «${catalogQuery.trim()}»`:''}</span><span>Los perfiles de demostración y las imágenes ilustrativas están identificados.</span></div>
+  {loading?<p role="status">Buscando profesionales…</p>:shownProviders.length?<div className={filter||catalogQuery?'professional-grid is-filtered':'professional-grid'}>{shownProviders.map(p=><ProfessionalCard key={p.id} provider={p} onOpen={()=>act(async()=>{setProfile(await api('providers/'+p.id));window.scrollTo({top:0})})}/>)}</div>:<div className="empty"><Wrench size={36}/><h3>{catalogQuery.trim()?'Nadie coincide con tu búsqueda':'No hay profesionales de este oficio'}</h3><p>{catalogQuery.trim()?'Prueba con otro nombre o zona.':'Explora otros oficios o vuelve más tarde.'}</p><button className="secondary" onClick={()=>{setFilter('');setCatalogQuery('')}}>Ver todos los profesionales <ArrowRight size={16}/></button></div>}
 </section>
 <HowItWorks onExplore={focusCatalog} onGuide={()=>{go('guide');window.scrollTo({top:0})}}/>
 </>}
