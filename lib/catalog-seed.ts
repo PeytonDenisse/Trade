@@ -17,15 +17,15 @@ export async function seedCatalog(env:any,db:Db){
  if(env.DEMO_ENABLED!=='true')return Response.json({error:'Catálogo de demostración deshabilitado.'},{status:403});
  // Same as SQL INSERT OR IGNORE: only writes documents whose key does not exist yet.
  const add=(name:string,key:string,doc:any)=>db.collection(name).updateOne({[key]:doc[key]},{$setOnInsert:doc},{upsert:true});
- await add('users','id',{id:'catalog-client',name:'Cliente ficticio · Demo',email:'catalog-client@trade.example',hash:crypto.randomUUID(),salt:crypto.randomUUID(),role:'cliente'});
+ await add('users','id',{id:'catalog-client',name:'Cliente ficticio · Demo',email:'catalog-client@trade.example',hash:crypto.randomUUID(),salt:crypto.randomUUID(),role:'cliente',active:true});
  for(let i=0;i<catalog.length;i++){
  const [name,trade,experience,zone,description,color,rating,job]=catalog[i],uid=`catalog-provider-${i+1}`,photo=uid+'-avatar',document=uid+'-document',rid=uid+'-service',qid=uid+'-quote';
  if(!await env.BUCKET.get(photo))await env.BUCKET.put(photo,new TextEncoder().encode(avatar(name,color)),{httpMetadata:{contentType:'image/svg+xml'}});
  if(!await env.BUCKET.get(document))await env.BUCKET.put(document,new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#e9eee8"/><text x="40" y="150" font-size="28" font-family="Arial">PERFIL FICTICIO · DEMOSTRACIÓN</text><text x="40" y="220" font-size="22" font-family="Arial">Sin documento de identidad real</text></svg>'),{httpMetadata:{contentType:'image/svg+xml'}});
- await add('users','id',{id:uid,name:name+' · Demo',email:`proveedor${i+1}@trade.example`,hash:crypto.randomUUID(),salt:crypto.randomUUID(),role:'proveedor'});
+ await add('users','id',{id:uid,name:name+' · Demo',email:`proveedor${i+1}@trade.example`,hash:crypto.randomUUID(),salt:crypto.randomUUID(),role:'proveedor',active:true});
  await add('files','id',{id:photo,owner:uid,request:null,kind:'photo',mime:'image/svg+xml'});
  await add('files','id',{id:document,owner:uid,request:null,kind:'document',mime:'image/svg+xml'});
- await add('providers','id',{id:uid,trade,experience,zone,description:description+' Perfil ficticio para demostración.',photo,document,status:'Aprobada'});
+ await add('providers','id',{id:uid,trade,trades:[trade],experience,zone,description:description+' Perfil ficticio para demostración.',photo,document,status:'Aprobada',active:true});
  await add('requests','id',{id:rid,owner:'catalog-client',trade,description:job+' (ejemplo ficticio)',date:'2026-10-10',status:'Completado',provider:uid,quote:qid,created:'2026-10-08T12:00:00Z'});
  await add('quotes','id',{id:qid,request:rid,provider:uid,price:650+i*125,description:'Servicio y materiales de ejemplo. Sin transacción real.',status:'Aceptada'});
  await add('reviews','request',{request:rid,provider:uid,owner:'catalog-client',stars:rating,comment:'Reseña ficticia de demostración: '+['Explicó el trabajo y dejó todo limpio.','Buena comunicación y atención al detalle.','El resultado quedó como se había acordado.'][i%3]});

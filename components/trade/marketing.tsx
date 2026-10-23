@@ -1,7 +1,9 @@
 'use client';
 import { ArrowRight, ChevronRight, Droplets, Hammer, ShieldCheck, Star, MapPin, Zap, KeyRound, PaintRoller, BrickWall, Wrench } from 'lucide-react';
 import { designImages, providerImage, tradeImage } from '../../lib/design-images';
+import { tradesOf } from '../../lib/rules';
 import { RemoteImage } from './remote-image';
+import { useTrades } from './trades-context';
 
 export function Hero({ onExplore }: { onExplore: () => void }) {
   return <section className="landing-hero hero-highlight">
@@ -32,10 +34,12 @@ const tradeCards = [
 ];
 
 export function PopularTrades({ onSelect }: { onSelect: (trade: string) => void }) {
+  // Active trades in admin order; ones added by administration get a generic card.
+  const cards = useTrades().map(name => tradeCards.find(card => card.name === name) || { name, description: `Profesionales de ${name.toLowerCase()}.`, Icon: Wrench });
   return <section className="popular-trades" aria-labelledby="popular-title">
-    <div className="section-head"><div><h2 id="popular-title">Explora los oficios</h2><p>Siete formas de encontrar ayuda para tu proyecto.</p></div>
+    <div className="section-head"><div><h2 id="popular-title">Explora los oficios</h2><p>{cards.length} oficios para encontrar ayuda en tu proyecto.</p></div>
       <button className="secondary" onClick={() => onSelect('')}>Ver profesionales <ArrowRight size={16}/></button></div>
-    <div className="trade-grid">{tradeCards.map(({ name, description, Icon }, index) =>
+    <div className="trade-grid">{cards.map(({ name, description, Icon }, index) =>
       <button className={index < 3 ? 'trade-card' : 'trade-card trade-card-compact'} key={name} onClick={() => onSelect(name)}>
         {index < 3 && <RemoteImage src={tradeImage(name)} alt={`Fotografía ilustrativa de ${name.toLowerCase()}`} loading="lazy" width={600} height={380}/>}
         <span className="trade-card-icon"><Icon size={24}/></span>
@@ -46,7 +50,7 @@ export function PopularTrades({ onSelect }: { onSelect: (trade: string) => void 
   </section>;
 }
 
-type CatalogProvider = { id: string; name: string; photo?: string; trade: string; zone: string; rating?: number; description: string };
+type CatalogProvider = { id: string; name: string; photo?: string; trade: string; trades?: string[]; zone: string; rating?: number; description: string };
 export function ProfessionalCard({ provider, onOpen }: { provider: CatalogProvider; onOpen: () => void }) {
   const photo = providerImage(provider);
   const demo = String(provider.id).startsWith('catalog-provider-') || provider.id === 'demo-proveedor' || provider.id === 'presentation-provider-login';
@@ -54,7 +58,7 @@ export function ProfessionalCard({ provider, onOpen }: { provider: CatalogProvid
     <div className="professional-photo"><RemoteImage src={photo.src} alt={photo.illustrative ? `Fotografía ilustrativa de ${provider.trade}` : demo ? `Imagen ilustrativa de ${provider.name}` : `Fotografía de ${provider.name}`} loading="lazy" width={600} height={440}/>
       {(photo.illustrative || demo) && <span>{demo ? 'Perfil de demostración' : 'Imagen ilustrativa'}</span>}</div>
     <div className="professional-info"><span className="verified"><ShieldCheck size={14}/> Aprobado por Trade</span>
-      <h3>{provider.name}</h3><p className="professional-trade">{provider.trade}</p>
+      <h3>{provider.name}</h3><p className="professional-trade">{tradesOf(provider).join(' · ')}</p>
       <p className="professional-zone"><MapPin size={15}/>{provider.zone}</p>
       <p className="professional-rating"><Star size={16} fill={provider.rating ? 'currentColor' : 'none'}/><strong>{provider.rating ? Number(provider.rating).toFixed(1) : 'Sin reseñas'}</strong></p>
       <p className="professional-description">{provider.description}</p>
@@ -70,13 +74,13 @@ export function HomeBanner({ onExplore, label = 'Explorar profesionales' }: { on
   </section>;
 }
 
-export function HowItWorks({ onExplore }: { onExplore: () => void }) {
+export function HowItWorks({ onExplore, onGuide }: { onExplore: () => void; onGuide: () => void }) {
   const steps = [
     { title: 'Publica tu solicitud', description: 'Describe qué necesitas y añade fotos si lo deseas.', image: designImages.planning },
     { title: 'Recibe cotizaciones', description: 'Compara el precio y el alcance de las propuestas.', image: designImages.electrical },
     { title: 'Confirma el trabajo', description: 'Revisa las evidencias, confirma y comparte tu experiencia.', image: designImages.carpentry },
   ];
-  return <><section className="how-it-works"><h2>Así funciona</h2><p>De una idea a un proyecto resuelto, paso a paso.</p>
+  return <><section className="how-it-works"><div className="how-heading"><div><h2>Así funciona</h2><p>De una idea a un proyecto resuelto, paso a paso.</p></div><button className="secondary" onClick={onGuide}>Ver cómo funciona <ArrowRight size={17}/></button></div>
     <div className="how-grid">{steps.map((step, i) => <article key={step.title}>
       <div className="how-photo"><RemoteImage src={step.image} alt="Fotografía ilustrativa del proceso" loading="lazy" width={500} height={300}/><span>{i + 1}</span></div>
       <h3>{step.title}</h3><p>{step.description}</p>

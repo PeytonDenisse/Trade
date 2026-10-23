@@ -55,7 +55,7 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(env,'approve',{id:workerId},admin.cookie);assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.status,'Aprobada');ok('HU-04','Solo administración aprueba y habilita proveedores');
  await request(env,'requests',{trade:'Plomería',description:'Fuga en mi casa',date:'2099-01-01'},worker.cookie,403);await request(env,'requests',{trade:'Pintura',description:'Pintar recámara',date:'2099-01-01'},worker.cookie,201);ok('Flujo','Un proveedor no publica solicitudes de su propio oficio, pero sí de otros');
  const rita=await request(env,'register',credentials('rita'));const ritaPhoto=(await upload(env,rita.cookie,'photo')).data.id,ritaDoc=(await upload(env,rita.cookie,'document')).data.id;const ritaApply={trade:'Electricidad',experience:'2 años',zone:'León',description:'Instalaciones',photo:ritaPhoto,document:ritaDoc};
- await request(env,'apply',ritaApply,rita.cookie,201);assert.equal((await request(env,'applications',undefined,admin.cookie)).data[0].status,'Pendiente');await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id},client.cookie,403);await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id},admin.cookie);assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.status,'Rechazada');await request(env,'apply',ritaApply,rita.cookie,201);assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.status,'Pendiente');await request(env,'apply',ritaApply,rita.cookie,409);ok('Flujo','Administración rechaza registros pendientes; el proveedor puede volver a enviarlo');
+ await request(env,'apply',ritaApply,rita.cookie,201);assert.equal((await request(env,'applications',undefined,admin.cookie)).data[0].status,'Pendiente');await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id},client.cookie,403);await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id},admin.cookie,400);await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id,reason:'La identificación no se lee.'},admin.cookie);assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.reason,'La identificación no se lee.');assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.status,'Rechazada');await request(env,'apply',ritaApply,rita.cookie,201);assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.status,'Pendiente');await request(env,'apply',ritaApply,rita.cookie,409);ok('Flujo','Administración rechaza registros pendientes; el proveedor puede volver a enviarlo');
  await request(env,'users',undefined,client.cookie,403);const people=(await request(env,'users',undefined,admin.cookie)).data;assert.ok(people.length>=4);assert.ok(people.every((p:any)=>p.hash===undefined&&p.salt===undefined));assert.equal(people.find((p:any)=>p.id===workerId).provider_status,'Aprobada');ok('Administración','Directorio de clientes y proveedores solo para administración y sin contraseñas');
  await request(env,'requests',{trade:'Pintura',description:'Prueba de administración',date:'2099-01-01'},admin.cookie,403);ok('Administración','Las cuentas de administración no publican solicitudes de servicio');
  const adminPhoto=(await upload(env,admin.cookie,'photo')).data.id,adminDoc=(await upload(env,admin.cookie,'document')).data.id;await request(env,'apply',{trade:'Pintura',experience:'1 año',zone:'León',description:'Prueba',photo:adminPhoto,document:adminDoc},admin.cookie,403);assert.equal((await request(env,'me',undefined,admin.cookie)).data.application,null);ok('Administración','Las cuentas de administración no se registran como proveedores');
@@ -76,6 +76,23 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(teamEnv,'demo',{role:'owner'},'',400);
  for(const role of ['cliente','proveedor','admin']){const demoSession=await request(teamEnv,'demo',{role});const identity=(await request(teamEnv,'me',undefined,demoSession.cookie)).data;assert.equal(identity.user.id,'demo-'+role);if(role==='admin')await request(teamEnv,'applications',undefined,demoSession.cookie);}
  await request({...env,DEMO_ENABLED:'false'},'demo',{role:'admin'},'',403);
+ // Several trades per provider: catalog, opportunities and own-trade rule use the whole list.
+ const multi=await request(env,'register',credentials('multi'));const multiId=(await request(env,'me',undefined,multi.cookie)).data.user.id;const multiPhoto=(await upload(env,multi.cookie,'photo')).data.id,multiDoc=(await upload(env,multi.cookie,'document')).data.id;
+ await request(env,'apply',{trades:[],experience:'x',zone:'León',description:'x',photo:multiPhoto,document:multiDoc},multi.cookie,400);await request(env,'apply',{trades:['Pintura','Cerrajería','Pintura'],experience:'4 años',zone:'León',description:'Pintura y cerraduras',photo:multiPhoto,document:multiDoc},multi.cookie,201);
+ const multiApp=(await request(env,'me',undefined,multi.cookie)).data.application;assert.deepEqual(multiApp.trades,['Pintura','Cerrajería']);assert.equal(multiApp.trade,'Pintura');await request(env,'approve',{id:multiId},admin.cookie);
+ for(const t of ['Pintura','Cerrajería'])assert.ok((await request(env,'providers?trade='+encodeURIComponent(t))).data.some((p:any)=>p.id===multiId));
+ const lockReq=(await request(env,'requests',{trade:'Cerrajería',description:'Cambiar chapa',date:'2099-01-01'},other.cookie,201)).data.id;assert.ok((await request(env,'requests?scope=available',undefined,multi.cookie)).data.some((r:any)=>r.id===lockReq));await request(env,'quote',{request:lockReq,price:300,description:'Chapa nueva'},multi.cookie,201);
+ await request(env,'requests',{trade:'Cerrajería',description:'Propio',date:'2099-01-01'},multi.cookie,403);ok('Oficios','Un proveedor ofrece varios oficios: catálogo, oportunidades, cotización y regla de oficio propio');
+ // Direct requests: asked to one provider, only that provider sees, opens and quotes them.
+ const painter=await request(env,'register',credentials('painter'));const painterId=(await request(env,'me',undefined,painter.cookie)).data.user.id;const painterPhoto=(await upload(env,painter.cookie,'photo')).data.id,painterDoc=(await upload(env,painter.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Pintura'],experience:'3 años',zone:'León',description:'Pintura',photo:painterPhoto,document:painterDoc},painter.cookie,201);await request(env,'approve',{id:painterId},admin.cookie);
+ await request(env,'requests',{trade:'Plomería',description:'No la ofrece',date:'2099-01-01',provider:multiId},other.cookie,400);await request(env,'requests',{trade:'Pintura',description:'Inexistente',date:'2099-01-01',provider:'no-existe'},other.cookie,404);await request(env,'requests',{trade:'Pintura',description:'Objeto',date:'2099-01-01',provider:{$ne:null}},other.cookie,400);
+ const direct=(await request(env,'requests',{trade:'Pintura',description:'Pintar sala, solo para multi',date:'2099-01-01',provider:multiId},other.cookie,201)).data.id;
+ assert.ok((await request(env,'requests?scope=available',undefined,multi.cookie)).data.some((r:any)=>r.id===direct));assert.ok(!(await request(env,'requests?scope=available',undefined,painter.cookie)).data.some((r:any)=>r.id===direct));
+ await request(env,'requests/'+direct,undefined,painter.cookie,403);await request(env,'quote',{request:direct,price:500,description:'Intruso'},painter.cookie,403);await request(env,'quote',{request:direct,price:600,description:'Pintura de sala'},multi.cookie,201);
+ assert.equal((await request(env,'requests/'+direct,undefined,other.cookie)).data.target_name,'multi');assert.equal((await request(env,'requests?scope=mine',undefined,other.cookie)).data.find((r:any)=>r.id===direct).target_name,'multi');ok('Solicitud directa','El cliente pide a un proveedor concreto; solo ese proveedor la ve y cotiza');
+ // Active flag is required: the database rejects users and providers without it.
+ await assert.rejects(db.collection('users').insertOne({id:'sin-activo',name:'Sin activo',email:'sin-activo@example.test',hash:'x',salt:'x',role:'cliente'}),(e:any)=>e.code===121);ok('Activo','La base de datos rechaza usuarios sin el campo active');
  // Active flag: deactivated providers disappear and cannot quote; deactivated accounts cannot log in.
  assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.active,true);
  await db.collection('providers').updateOne({id:workerId},{$set:{active:false}});assert.ok(!(await request(env,'providers')).data.some((p:any)=>p.id===workerId));await request(env,'providers/'+workerId,undefined,'',404);await request(env,'requests?scope=available',undefined,worker.cookie,403);assert.equal((await request(env,'me',undefined,worker.cookie)).data.user.id,workerId);
@@ -86,3 +103,157 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request(env,'account-active',{id:otherId,active:false},admin.cookie);assert.equal((await request(env,'me',undefined,otherLogin.cookie)).data.user,null);assert.equal((await request(env,'users',undefined,admin.cookie)).data.find((p:any)=>p.id===otherId).active,false);await request(env,'account-active',{id:otherId,active:true},admin.cookie);await request(env,'login',credentials('other'));
  await request(env,'provider-active',{id:workerId,active:false},admin.cookie);assert.ok(!(await request(env,'providers')).data.some((p:any)=>p.id===workerId));assert.equal((await request(env,'users',undefined,admin.cookie)).data.find((p:any)=>p.id===workerId).provider_active,false);await request(env,'provider-active',{id:workerId,active:true},admin.cookie);assert.ok((await request(env,'providers')).data.some((p:any)=>p.id===workerId));ok('Administración','Administración desactiva y reactiva cuentas y proveedores; nunca otra cuenta de administración');
  console.log('TRADE_TEST_REPORT='+JSON.stringify(records));});
+test('Cuenta: ajustes, contraseña, desactivación y recuperación',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const ana=await request(env,'register',credentials('ana'));const admin=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const anaId=(await request(env,'me',undefined,ana.cookie)).data.user.id;assert.ok((await db.collection('users').findOne({id:anaId}))!.created_at);
+ // Name and avatar
+ await request(env,'account',{name:'Ana López'},ana.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.name,'Ana López');
+ await request(env,'account',{},ana.cookie,400);await request(env,'account',{name:'x'},'',401);
+ const avatar=(await upload(env,ana.cookie,'avatar')).data.id;await request(env,'account',{photo:avatar},ana.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.photo_url,'/api/files/'+avatar);
+ const otherAvatar=(await upload(env,admin.cookie,'avatar')).data.id;await request(env,'account',{photo:otherAvatar},ana.cookie,400);
+ await request(env,'account',{photo:null},ana.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.photo,null);
+ // Password change keeps this session and closes the others
+ const second=await request(env,'login',credentials('ana'));
+ await request(env,'account-password',{current:'mal',password:'Otra-clave-segura-1'},ana.cookie,403);await request(env,'account-password',{current:credentials('ana').password,password:'corta'},ana.cookie,400);
+ await request(env,'account-password',{current:credentials('ana').password,password:'Otra-clave-segura-1'},ana.cookie);
+ assert.ok((await request(env,'me',undefined,ana.cookie)).data.user);assert.equal((await request(env,'me',undefined,second.cookie)).data.user,null);
+ await request(env,'login',credentials('ana'),'',401);await request(env,'login',{...credentials('ana'),password:'Otra-clave-segura-1'});
+ // Recovery: request, admin issues a link, link sets a new password once
+ const forgot=(await request(env,'forgot',{email:'ana@example.test'})).data;const unknown=(await request(env,'forgot',{email:'nadie@example.test'})).data;assert.equal(forgot.message,unknown.message);
+ await request(env,'password-resets',undefined,ana.cookie,403);const open=(await request(env,'password-resets',undefined,admin.cookie)).data;assert.equal(open.length,1);assert.equal(open[0].email,'ana@example.test');assert.equal(open[0].token_hash,undefined);
+ await request(env,'reset-link',{id:anaId},ana.cookie,403);const link=(await request(env,'reset-link',{id:anaId},admin.cookie)).data.path as string;const token=link.split('/').pop()!;
+ assert.ok(!(await db.collection('password_resets').findOne({token_hash:token})));
+ assert.deepEqual((await request(env,'reset/'+token)).data,{valid:true,name:'Ana López'});assert.equal((await request(env,'reset/otro')).data.valid,false);
+ await request(env,'reset',{token,password:'corta'},'',400);await request(env,'reset',{token,password:'Clave-recuperada-22'});await request(env,'reset',{token,password:'Clave-recuperada-33'},'',410);
+ await request(env,'login',{...credentials('ana'),password:'Clave-recuperada-22'});
+ const expired=(await request(env,'reset-link',{id:anaId},admin.cookie)).data.path.split('/').pop();await db.collection('password_resets').updateOne({user_id:anaId,status:'Enviada'},{$set:{expires:Date.now()-1}});await request(env,'reset',{token:expired,password:'Clave-vencida-44'},'',410);
+ // Closing one's own account; admins cannot
+ await request(env,'account-deactivate',{password:'x'},admin.cookie,403);
+ const session=await request(env,'login',{...credentials('ana'),password:'Clave-recuperada-22'});await request(env,'account-deactivate',{password:'mal'},session.cookie,403);
+ await request(env,'account-deactivate',{password:'Clave-recuperada-22'},session.cookie);assert.equal((await request(env,'me',undefined,session.cookie)).data.user,null);
+ await request(env,'login',{...credentials('ana'),password:'Clave-recuperada-22'},'',403);
+});
+test('Administración: tablero, ficha de persona, motivos y bitácora',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const luis=await request(env,'register',credentials('luis'));const luisId=(await request(env,'me',undefined,luis.cookie)).data.user.id;
+ const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document},luis.cookie,201);
+ await request(env,'admin/summary',undefined,luis.cookie,403);
+ let summary=(await request(env,'admin/summary',undefined,boss.cookie)).data;assert.equal(summary.attention.registrations,1);assert.equal(summary.roles.admin,1);assert.equal(summary.week.people,2);
+ await request(env,'approve',{id:luisId},boss.cookie);
+ await request(env,'provider-active',{id:luisId,active:false,reason:'Quejas por puntualidad'},boss.cookie);assert.equal((await request(env,'me',undefined,luis.cookie)).data.application.deactivated_reason,'Quejas por puntualidad');
+ await request(env,'provider-active',{id:luisId,active:true},boss.cookie);
+ await request(env,'account-active',{id:luisId,active:false,reason:'Cuenta duplicada'},boss.cookie);
+ const blocked=await handle(new Request('https://trade.test/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(credentials('luis'))}),env);assert.equal(blocked.status,403);assert.match((await blocked.json() as any).error,/Cuenta duplicada/);
+ await request(env,'account-active',{id:luisId,active:true},boss.cookie);
+ const card=(await request(env,'admin/people/'+luisId,undefined,boss.cookie)).data;
+ assert.equal(card.person.email,'luis@example.test');assert.equal(card.person.hash,undefined);assert.equal(card.registration.status,'Aprobada');assert.equal(card.registration.decided_by,(await db.collection('users').findOne({email:'jefa@example.test'}))!.id);
+ assert.deepEqual(card.history.map((h:any)=>h.action),['account.activate','account.deactivate','provider.activate','provider.deactivate','provider.approve']);
+ assert.equal(card.history[1].detail,'Cuenta duplicada');assert.equal(card.history[0].actor_name,'jefa');
+ await request(env,'admin/people/nadie',undefined,boss.cookie,404);
+ summary=(await request(env,'admin/summary',undefined,boss.cookie)).data;assert.equal(summary.attention.registrations,0);assert.equal(summary.activity.length,5);
+});
+test('Oficios: catálogo administrado, renombrar, desactivar, importar y exportar',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ assert.deepEqual((await request(env,'trades')).data,['Plomería','Electricidad','Carpintería','Cerrajería','Pintura','Albañilería','Mantenimiento']);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const ana=await request(env,'register',credentials('ana'));
+ await request(env,'admin/trade',{name:'Jardinería'},ana.cookie,403);
+ await request(env,'admin/trade',{name:'Jardinería'},boss.cookie);await request(env,'admin/trade',{name:'jardinería'},boss.cookie,409);
+ assert.ok((await request(env,'trades')).data.includes('Jardinería'));
+ await request(env,'requests',{trade:'Jardinería',description:'Podar',date:'2099-01-01'},ana.cookie,201);
+ await request(env,'admin/trade',{previous:'Jardinería',name:'Jardinería y poda'},boss.cookie);
+ assert.equal((await request(env,'requests?scope=mine',undefined,ana.cookie)).data[0].trade,'Jardinería y poda');
+ await request(env,'admin/trade-active',{name:'Jardinería y poda',active:false},boss.cookie);
+ assert.ok(!(await request(env,'trades')).data.includes('Jardinería y poda'));
+ await request(env,'requests',{trade:'Jardinería y poda',description:'Podar otra vez',date:'2099-01-01'},ana.cookie,400);
+ const list=(await request(env,'admin/trades',undefined,boss.cookie)).data;const garden=list.find((t:any)=>t.name==='Jardinería y poda');assert.equal(garden.active,false);assert.equal(garden.requests,1);
+ const imported=(await request(env,'admin/trades-import',{text:'Oficio\nTapicería\nPlomería\nVidriería\nTapicería'},boss.cookie)).data;assert.deepEqual(imported,{added:['Tapicería','Vidriería'],existing:['Plomería']});
+ const file=await handle(new Request('https://trade.test/api/admin/export/personas',{headers:{cookie:boss.cookie}}),env);assert.equal(file.status,200);assert.match(file.headers.get('content-type')!,/text\/csv/);const body=await file.text();assert.match(body,/"Nombre","Correo"/);assert.match(body,/ana@example\.test/);assert.doesNotMatch(body,/hash|salt/);
+ await db.collection('users').updateOne({email:'ana@example.test'},{$set:{name:'=HYPERLINK("x")'}});assert.match(await (await handle(new Request('https://trade.test/api/admin/export/personas',{headers:{cookie:boss.cookie}}),env)).text(),/"'=HYPERLINK/);
+ const forbidden=await handle(new Request('https://trade.test/api/admin/export/personas',{headers:{cookie:ana.cookie}}),env);assert.equal(forbidden.status,403);
+ assert.ok((await db.collection('audit_log').find({action:{$in:['trade.create','trade.rename','trade.deactivate','trade.import','data.export']}}).toArray()).length>=5);
+});
+test('Equipo y ajustes: permisos de administración y reglas de la plataforma',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});const bossId=(await request(env,'me',undefined,boss.cookie)).data.user.id;
+ const ana=await request(env,'register',credentials('ana'));
+ // Team
+ await request(env,'admin/role',{email:'ana@example.test',admin:true},ana.cookie,403);
+ await request(env,'admin/role',{email:'nadie@example.test',admin:true},boss.cookie,404);
+ await request(env,'admin/role',{id:bossId,admin:false},boss.cookie,403);
+ await request(env,'admin/role',{email:'ana@example.test',admin:true},boss.cookie);assert.equal((await request(env,'me',undefined,ana.cookie)).data.user.role,'admin');
+ assert.equal((await request(env,'admin/team',undefined,boss.cookie)).data.length,2);
+ await request(env,'admin/role',{email:'jefa@example.test',admin:false},ana.cookie);
+ const anaId=(await request(env,'me',undefined,ana.cookie)).data.user.id;await request(env,'admin/role',{id:anaId,admin:false},ana.cookie,403);
+ await db.collection('users').updateOne({id:bossId},{$set:{role:'admin'}});await db.collection('users').updateOne({id:bossId},{$set:{active:false}});
+ await request(env,'admin/role',{id:bossId,admin:false},ana.cookie,409);
+ await db.collection('users').updateOne({id:bossId},{$set:{active:true}});
+ const luis=await request(env,'register',credentials('luis'));const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document},luis.cookie,201);
+ await request(env,'admin/role',{email:'luis@example.test',admin:true},boss.cookie,409);
+ // Settings
+ assert.deepEqual((await request(env,'settings')).data,{registrationOpen:true,providerApplicationsOpen:true});
+ await request(env,'admin/settings',{maxOpenRequests:0},boss.cookie,400);await request(env,'admin/settings',{},boss.cookie,400);await request(env,'admin/settings',{registrationOpen:false},luis.cookie,403);
+ const saved=(await request(env,'admin/settings',{registrationOpen:false,providerApplicationsOpen:false,maxOpenRequests:1},boss.cookie)).data;assert.equal(saved.maxOpenRequests,1);assert.equal(saved.requestExpiryDays,30);
+ await request(env,'register',credentials('tarde'),'',403);
+ await request(env,'requests',{trade:'Plomería',description:'Una',date:'2099-01-01'},luis.cookie,201);await request(env,'requests',{trade:'Plomería',description:'Dos',date:'2099-01-01'},luis.cookie,409);
+ const rejected=await db.collection('users').findOne({email:'luis@example.test'});await request(env,'reject',{id:rejected!.id,reason:'Prueba'},boss.cookie);
+ await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document},luis.cookie,403);
+ assert.ok(await db.collection('audit_log').findOne({action:'settings.update'}));assert.ok(await db.collection('audit_log').findOne({action:'role.admin'}));
+});
+test('Ciclo de solicitudes y moderación: cancelar, vencer, reportar, resolver y ocultar reseñas',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const ana=await request(env,'register',credentials('ana')),otro=await request(env,'register',credentials('otro'));
+ const luis=await request(env,'register',credentials('luis'));const luisId=(await request(env,'me',undefined,luis.cookie)).data.user.id;
+ const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document},luis.cookie,201);await request(env,'approve',{id:luisId},boss.cookie);
+ const post=async(description:string)=>(await request(env,'requests',{trade:'Plomería',description,date:'2099-01-01'},ana.cookie,201)).data.id as string;
+ // Cancel
+ const c1=await post('Cancelar');await request(env,'quote',{request:c1,price:300,description:'Visita'},luis.cookie,201);
+ await request(env,'cancel',{request:c1},otro.cookie,403);await request(env,'cancel',{request:c1,reason:'Ya lo arreglé'},ana.cookie);
+ const cancelled=(await request(env,'requests/'+c1,undefined,ana.cookie)).data;assert.equal(cancelled.status,'Cancelada');assert.equal(cancelled.closed_reason,'Ya lo arreglé');assert.equal(cancelled.quotes[0].status,'No seleccionada');
+ await request(env,'cancel',{request:c1},ana.cookie,409);
+ assert.ok(!(await request(env,'requests?scope=available',undefined,luis.cookie)).data.some((r:any)=>r.id===c1));
+ // Expiry
+ const old=await post('Vieja');await db.collection('requests').updateOne({id:old},{$set:{created:new Date(Date.now()-40*86400000).toISOString()}});
+ assert.equal((await request(env,'requests?scope=mine',undefined,ana.cookie)).data.find((r:any)=>r.id===old).status,'Vencida');
+ await request(env,'admin/settings',{requestExpiryDays:60},boss.cookie);const older=await post('Menos vieja');await db.collection('requests').updateOne({id:older},{$set:{created:new Date(Date.now()-40*86400000).toISOString()}});
+ assert.equal((await request(env,'requests/'+older,undefined,ana.cookie)).data.status,'Activa');
+ // Report → dispute → resolution
+ const job=await post('Fuga');await request(env,'quote',{request:job,price:800,description:'Reparación'},luis.cookie,201);
+ await request(env,'report',{request:job,reason:'x'},ana.cookie,409);
+ const quote=(await request(env,'requests/'+job,undefined,ana.cookie)).data.quotes[0].id;await request(env,'accept',{id:quote},ana.cookie);await request(env,'finish',{request:job},luis.cookie);
+ await request(env,'report',{request:job,reason:'Sigue goteando'},otro.cookie,403);
+ await request(env,'report',{request:job,reason:'Sigue goteando'},ana.cookie,201);await request(env,'report',{request:job,reason:'Otra vez'},luis.cookie,409);
+ const disputed=(await request(env,'requests/'+job,undefined,ana.cookie)).data;assert.equal(disputed.status,'En disputa');assert.equal(disputed.report.status,'Abierto');
+ await request(env,'confirm',{request:job},ana.cookie,409);
+ assert.equal((await request(env,'admin/summary',undefined,boss.cookie)).data.attention.reports,1);
+ const moderation=(await request(env,'admin/moderation',undefined,boss.cookie)).data;const open=moderation.reports[0];assert.equal(open.by_name,'ana');assert.equal(open.against_name,'luis');assert.equal(open.trade,'Plomería');
+ await request(env,'admin/report-resolve',{id:open.id,outcome:'Nada',resolution:'x'},boss.cookie,400);
+ await request(env,'admin/report-resolve',{id:open.id,outcome:'Terminado',resolution:'El proveedor volvió y cambió el empaque.'},boss.cookie);await request(env,'admin/report-resolve',{id:open.id,outcome:'Terminado',resolution:'otra'},boss.cookie,409);
+ assert.equal((await request(env,'requests/'+job,undefined,ana.cookie)).data.report.resolution,'El proveedor volvió y cambió el empaque.');
+ await request(env,'confirm',{request:job},ana.cookie);await request(env,'review',{request:job,stars:1,comment:'Insulto'},ana.cookie);
+ // Hide a review: it leaves the profile and the rating
+ assert.equal((await request(env,'providers/'+luisId)).data.reviews.length,1);
+ await request(env,'admin/review-hidden',{request:job,hidden:true},boss.cookie,400);await request(env,'admin/review-hidden',{request:job,hidden:true,reason:'Lenguaje ofensivo'},boss.cookie);
+ assert.equal((await request(env,'providers/'+luisId)).data.reviews.length,0);assert.equal((await request(env,'providers')).data.find((p:any)=>p.id===luisId).rating,null);
+ await request(env,'admin/review-hidden',{request:job,hidden:false},boss.cookie);assert.equal((await request(env,'providers')).data.find((p:any)=>p.id===luisId).rating,1);
+ // Admin closes a stuck request
+ const stuck=await post('Atorada');await request(env,'admin/request-close',{id:stuck},boss.cookie,400);await request(env,'admin/request-close',{id:stuck,reason:'Duplicada'},boss.cookie);await request(env,'admin/request-close',{id:stuck,reason:'Duplicada'},boss.cookie,409);
+ assert.equal((await request(env,'requests/'+stuck,undefined,ana.cookie)).data.closed_reason,'Duplicada');
+ await request(env,'admin/moderation',undefined,ana.cookie,403);
+});
+test('Reportes y actividad: números de la plataforma y bitácora filtrable',async(t)=>{const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const ana=await request(env,'register',credentials('ana'));const anaId=(await request(env,'me',undefined,ana.cookie)).data.user.id;
+ await request(env,'requests',{trade:'Pintura',description:'Pintar',date:'2099-01-01'},ana.cookie,201);await request(env,'requests',{trade:'Pintura',description:'Pintar 2',date:'2099-01-01'},ana.cookie,201);await request(env,'requests',{trade:'Plomería',description:'Fuga',date:'2099-01-01'},ana.cookie,201);
+ await request(env,'admin/analytics',undefined,ana.cookie,403);
+ const a=(await request(env,'admin/analytics',undefined,boss.cookie)).data;
+ assert.equal(a.months.length,6);assert.equal(a.months[5].requests,3);assert.equal(a.months[0].requests,0);
+ assert.deepEqual(a.byTrade[0],{trade:'Pintura',requests:2,completed:0});assert.equal(a.statuses.Activa,3);assert.equal(a.acceptedPrice,null);
+ await request(env,'account-active',{id:anaId,active:false,reason:'Spam'},boss.cookie);await request(env,'account-active',{id:anaId,active:true},boss.cookie);await request(env,'admin/trade',{name:'Jardinería'},boss.cookie);
+ assert.equal((await request(env,'admin/audit',undefined,boss.cookie)).data.length,3);
+ assert.equal((await request(env,'admin/audit?kind=account',undefined,boss.cookie)).data.length,2);
+ assert.equal((await request(env,'admin/audit?q=spam',undefined,boss.cookie)).data[0].action,'account.deactivate');
+ assert.equal((await request(env,'admin/audit?q=(',undefined,boss.cookie)).data.length,0);
+ await request(env,'admin/audit',undefined,ana.cookie,401);
+});
