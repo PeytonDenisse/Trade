@@ -210,3 +210,8 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .trade-check { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 999px; padding: 8px 14px; background: #fff; cursor: pointer; font-size: 14px; }
 .trade-check input { accent-color: var(--green); }
 .trade-check.checked { border-color: var(--green); background: #f5e3d9; color: var(--green); font-weight: 600; }
+
+/* Direct requests: who the request was sent to. */
+.target-badge { display: inline-flex; align-self: flex-start; margin-top: 4px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #e3edf9; color: #245589; }
+.request-target { background: #f5e3d9; border-radius: 12px; padding: 12px 14px; }
+.request-target .text-button { margin: 4px 0 0; display: inline; }

@@ -49,10 +49,12 @@ function focusCatalog(){setProfile(null);setPage('explore');window.requestAnimat
 function selectTrade(value:string){setFilter(value);go('explore');window.requestAnimationFrame(focusCatalog)}
 const [user,setUser]=useState<any>(null),[application,setApplication]=useState<any>(null),[page,setPage]=useState('explore'),[providers,setProviders]=useState<any[]>([]),[filter,setFilter]=useState(''),[items,setItems]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[profile,setProfile]=useState<any>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[photo,setPhoto]=useState(''),[document,setDocument]=useState('');
 const [requestTrade,setRequestTrade]=useState('');
+// Provider the client is asking directly from their profile; null means open to all.
+const [requestTarget,setRequestTarget]=useState<{id:string;name:string;trades:string[]}|null>(null);
 const [people,setPeople]=useState<any[]>([]);
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
 // The provider's own trade can't be requested; an empty trade means the client chooses.
-function startRequest(trade=''){setRequestTrade(trade);if(user)go('create');else{setAuthDestination('create');go('login')}}
+function startRequest(trade='',target:{id:string;name:string;trades:string[]}|null=null){setRequestTrade(trade);setRequestTarget(target);if(user)go('create');else{setAuthDestination('create');go('login')}}
 const ownTrades=application&&application.status!=='Rechazada'?tradesOf(application):[];
 // Mi inicio is each role's working page, not a separate page of shortcuts.
 function homeFor(u:any,app:any){if(!u)return 'explore';if(u.role==='admin')return 'admin';if(app?.status==='Aprobada'&&app.active!==false)return 'available';if(app)return 'apply';return 'mine'}
@@ -103,7 +105,7 @@ return <div className="shell public-shell">
 </section>
 <HowItWorks onExplore={focusCatalog} onGuide={()=>{go('guide');window.scrollTo({top:0})}}/>
 </>}
-{profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrades={ownTrades} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(tradesOf(profile).find(t=>!ownTrades.includes(t))||'')}/>}
+{profile&&<ProfilePage provider={profile} isOwn={profile.id===user?.id} isAdmin={user?.role==='admin'} ownTrades={ownTrades} onBack={()=>{setProfile(null);window.requestAnimationFrame(focusCatalog)}} onRequest={()=>startRequest(tradesOf(profile).find(t=>!ownTrades.includes(t))||'',{id:profile.id,name:profile.name,trades:tradesOf(profile)})}/>}
 {['login','register'].includes(page)&&<AccessPage onExplore={focusCatalog} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
 {view==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
   photoUpload={<Upload kind="photo" label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
@@ -112,7 +114,7 @@ return <div className="shell public-shell">
   onOpportunities={()=>go('available')}
   onSubmit={async values=>{await api('apply',{...values,photo,document});await me();setNotice('Tu registro como proveedor quedó pendiente de revisión.')}}
 />}
-{page==='create'&&<CreateRequestPage key={requestTrade} initialTrade={ownTrades.includes(requestTrade)?'':requestTrade} excludeTrades={ownTrades} onSubmit={async(values)=>{const r=await api('requests',values);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
+{page==='create'&&<CreateRequestPage key={requestTrade+(requestTarget?.id||'')} initialTrade={ownTrades.includes(requestTrade)?'':requestTrade} excludeTrades={ownTrades} target={requestTarget} onClearTarget={()=>setRequestTarget(null)} onSubmit={async(values)=>{const r=await api('requests',{...values,...(requestTarget?{provider:requestTarget.id}:{})});setRequestTarget(null);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}
 {view==='mine'&&!selected&&<MyRequests items={items} loading={loading} error={error} openingId={openingId} onOpen={id=>act(async()=>{await detail(id);window.scrollTo({top:0})})} onCreate={()=>startRequest()}/>}
 {['available','assigned'].includes(view)&&<ProviderWorkspace mode={view as 'available'|'assigned'} trade={tradesOf(application).join(', ')} items={items} selected={selected} loading={loading} error={error} openingId={openingId}
   onOpen={id=>act(async()=>{await detail(id);window.requestAnimationFrame(()=>window.document.getElementById('provider-detail')?.scrollIntoView({block:'start'}))})}

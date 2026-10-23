@@ -37,8 +37,8 @@ export function ProfilePage({ provider, isOwn, isAdmin, ownTrades, onBack, onReq
         {isOwn ? <p className="profile-request-note">Este es tu perfil público. Así lo ven los clientes.</p>
           : isAdmin ? <p className="profile-request-note">Vista de administración: las cuentas de administración no piden cotizaciones.</p>
           : tradesOf(provider).every(t => ownTrades.includes(t)) ? <p className="profile-request-note">{firstName} ofrece los mismos oficios que tú, así que no puedes pedirle cotizaciones.</p>
-          : <><button className="primary" onClick={onRequest}>Pedir cotización <ArrowRight size={18}/></button>
-            <p className="profile-request-note">Describes tu proyecto una vez y lo reciben {firstName} y los demás profesionales aprobados del oficio que elijas. Tú eliges la cotización que prefieras.</p></>}
+          : <><button className="primary" onClick={onRequest}>Pedir cotización a {firstName} <ArrowRight size={18}/></button>
+            <p className="profile-request-note">Tu solicitud le llegará solo a {firstName}. Si prefieres comparar varias cotizaciones, publica una solicitud abierta con Nueva solicitud.</p></>}
       </div>
       <aside className="profile-facts"><h2>Sobre su trabajo</h2><div><BriefcaseBusiness size={22}/><span><strong>Experiencia</strong>{provider.experience}</span></div><div><MapPin size={22}/><span><strong>Zona de servicio</strong>{provider.zone}</span></div><div><ShieldCheck size={22}/><span><strong>{tradesOf(provider).length > 1 ? 'Oficios' : 'Oficio'}</strong>{tradesOf(provider).join(', ')}</span></div></aside>
     </section>

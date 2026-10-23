@@ -28,9 +28,10 @@ export const collections: Record<string, Def> = {
   },
   requests: {
     key: "id",
-    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str },
-    optional: ["provider", "quote"],
-    index: [{ owner: 1 }, { provider: 1 }, { trade: 1, status: 1 }],
+    // target: provider the client asked directly; empty means any approved provider of the trade.
+    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str, target: optStr },
+    optional: ["provider", "quote", "target"],
+    index: [{ owner: 1 }, { provider: 1 }, { trade: 1, status: 1 }, { target: 1 }],
   },
   quotes: {
     key: "id",

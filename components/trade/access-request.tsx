@@ -88,9 +88,9 @@ const today = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
-export function CreateRequestPage({ initialTrade = '', excludeTrades = [], onSubmit }: { initialTrade?: string; excludeTrades?: string[]; onSubmit: (values: RequestValues) => Promise<void> }) {
+export function CreateRequestPage({ initialTrade = '', excludeTrades = [], target = null, onClearTarget, onSubmit }: { initialTrade?: string; excludeTrades?: string[]; target?: { name: string; trades: string[] } | null; onClearTarget?: () => void; onSubmit: (values: RequestValues) => Promise<void> }) {
   const id = useId();
-  const options = trades.filter(trade => !excludeTrades.includes(trade));
+  const options = trades.filter(trade => !excludeTrades.includes(trade) && (!target || target.trades.includes(trade)));
   const [values, setValues] = useState<RequestValues>({ trade: initialTrade, description: '', date: '' });
   const [errors, setErrors] = useState<Partial<Record<RequestField, string>>>({});
   const [formError, setFormError] = useState('');
@@ -118,7 +118,7 @@ export function CreateRequestPage({ initialTrade = '', excludeTrades = [], onSub
   }
   return <div className="request-create-page">
     <section className="request-create-intro"><div><p className="eyebrow">TU PROYECTO EMPIEZA AQUÍ</p><h1>Publica tu solicitud y encuentra ayuda para <em>tu proyecto</em></h1><p>Describe qué necesitas y elige una fecha. Después de publicar podrás añadir una foto del problema si quieres dar más contexto.</p></div><figure><RemoteImage src={designImages.plumbing} alt="Trabajo de plomería, fotografía ilustrativa" width={600} height={340}/><figcaption>Imagen ilustrativa</figcaption></figure></section>
-    <section className="request-form-card" aria-labelledby={id + '-title'}><div className="request-form-heading"><span><FileText size={25}/></span><div><h2 id={id + '-title'}>Crea tu solicitud de servicio</h2><p>Elige el oficio, explica el trabajo y señala cuándo lo necesitas. Tu solicitud llegará a todos los profesionales aprobados de ese oficio; cada uno puede enviarte una cotización y tú eliges una.</p></div></div>
+    <section className="request-form-card" aria-labelledby={id + '-title'}><div className="request-form-heading"><span><FileText size={25}/></span><div><h2 id={id + '-title'}>{target ? `Solicitud para ${target.name}` : 'Crea tu solicitud de servicio'}</h2>{target ? <p className="request-target">Solo {target.name} recibirá esta solicitud y podrá cotizarla. <button type="button" className="text-button" onClick={onClearTarget}>Enviarla a todos los profesionales del oficio</button></p> : <p>Elige el oficio, explica el trabajo y señala cuándo lo necesitas. Tu solicitud llegará a todos los profesionales aprobados de ese oficio; cada uno puede enviarte una cotización y tú eliges una.</p>}</div></div>
       <form onSubmit={submit} noValidate>
         {formError && <p className="error" role="alert">{formError}</p>}
         <div className="request-form-grid"><div className="access-field"><label htmlFor={id + '-trade'}>Oficio</label><select id={id + '-trade'} value={values.trade} onChange={event => update('trade', event.target.value)} aria-invalid={!!errors.trade} aria-describedby={errors.trade ? id + '-trade-error' : undefined}><option value="">Selecciona un oficio</option>{options.map(trade => <option key={trade} value={trade}>{trade}</option>)}</select>{excludeTrades.length > 0 && <small>No aparecen tus propios oficios: {excludeTrades.join(', ')}.</small>}{errors.trade && <p className="field-error" id={id + '-trade-error'} role="alert">{errors.trade}</p>}</div>
