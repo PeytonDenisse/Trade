@@ -3,9 +3,25 @@ import {useEffect,useState} from 'react';
 import {ArrowRight,ClipboardList,Copy,FileLock2,KeyRound,UserRound} from 'lucide-react';
 import {RemoteImage} from '../trade/remote-image';
 import {fileSrc} from '../../lib/design-images';
+import type {IneIdentity} from '../../lib/ine-identity';
 import {tradesOf} from '../../lib/rules';
 import {useConfirm,useToast} from '../feedback/feedback-provider';
 import {day,errorText,when,type Api} from './shared';
+
+const identityFields: {key:keyof IneIdentity;label:string}[] = [
+  {key:'nombres',label:'Nombre(s)'},
+  {key:'apellidoPaterno',label:'Apellido paterno'},
+  {key:'apellidoMaterno',label:'Apellido materno'},
+  {key:'fechaNacimiento',label:'Fecha de nacimiento'},
+  {key:'sexo',label:'Sexo o género'},
+  {key:'curp',label:'CURP'},
+  {key:'calleNumero',label:'Calle y número'},
+  {key:'colonia',label:'Colonia'},
+  {key:'codigoPostal',label:'Código postal'},
+  {key:'municipio',label:'Municipio o alcaldía'},
+  {key:'estado',label:'Estado'},
+  {key:'vigencia',label:'Vigencia del INE'},
+];
 
 // Por revisar: provider registrations and password recovery requests (approval queue).
 export function ReviewQueue({api,onPerson}:{api:Api;onPerson:(id:string)=>void}){
@@ -39,6 +55,13 @@ export function ReviewQueue({api,onPerson}:{api:Api;onPerson:(id:string)=>void})
         {selected&&<section className="admin-detail" aria-label={`Registro de ${selected.name}`}>
           <div className="admin-person"><span className="admin-person-photo">{selected.photo?<RemoteImage src={fileSrc(selected.photo,selected.photo_url)} alt={`Foto de perfil de ${selected.name}`}/>:<UserRound size={32}/>}</span><div><span className="status" data-status="Pendiente">Pendiente</span><h2>{selected.name}</h2><p>{tradesOf(selected).join(', ')} · {selected.zone}</p><button type="button" className="text-button" onClick={()=>onPerson(selected.id)}>Ver ficha completa</button></div></div>
           <dl className="admin-facts"><div><dt>Oficios</dt><dd>{tradesOf(selected).join(', ')}</dd></div><div><dt>Zona</dt><dd>{selected.zone}</dd></div><div><dt>Experiencia</dt><dd>{selected.experience}</dd></div><div><dt>Descripción</dt><dd>{selected.description}</dd></div></dl>
+          <section className="admin-identity" aria-labelledby="admin-identity-title">
+            <h3 id="admin-identity-title">Datos declarados de la identificación</h3>
+            {selected.identity?<>
+              <p className="muted">Revisa estos datos junto con el documento. Su formato no confirma oficialmente la identidad.</p>
+              <dl className="admin-facts admin-identity-facts">{identityFields.map(({key,label})=><div key={key}><dt>{label}</dt><dd>{(selected.identity as IneIdentity)[key]||'No aplica'}</dd></div>)}</dl>
+            </>:<p className="muted">Este registro se envió antes de incorporar los datos estructurados. Revisa el documento adjunto.</p>}
+          </section>
           <div className="admin-document"><h3>Documento de identificación</h3>{selected.document?<RemoteImage src={'/api/files/'+selected.document} alt={`Documento privado de ${selected.name}`}/>:<p>No se adjuntó un documento.</p>}<p><FileLock2 size={19}/> Documento privado: solo la persona y administración pueden verlo.</p></div>
           <div className="admin-actions"><button className="primary" type="button" disabled={busy} onClick={()=>decide(true)}>{busy?'Guardando…':'Aprobar proveedor'} <ArrowRight size={18}/></button><button className="secondary" type="button" disabled={busy} onClick={()=>decide(false)}>Rechazar…</button></div>
         </section>}

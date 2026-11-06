@@ -32,11 +32,21 @@ export const collections: Record<string, Def> = {
   providers: {
     key: "id",
     fields: { id: str, trade: str, trades: { bsonType: "array", minItems: 1, items: str }, experience: str, zone: str, description: str, photo: str, document: str, status: str, active: bool,
+      // Private INE fields: older provider records remain valid without this object.
+      identity: { bsonType: "object", additionalProperties: false,
+        required: ["nombres", "apellidoPaterno", "apellidoMaterno", "fechaNacimiento", "sexo", "curp", "calleNumero", "colonia", "codigoPostal", "municipio", "estado", "vigencia"],
+        properties: {
+          nombres: str, apellidoPaterno: str, apellidoMaterno: str,
+          fechaNacimiento: { bsonType: "string", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          sexo: { enum: ["H", "M", "NB"] }, curp: { bsonType: "string", pattern: "^[A-ZÑ&0-9]{18}$" },
+          calleNumero: str, colonia: str, codigoPostal: { bsonType: "string", pattern: "^[0-9]{5}$" },
+          municipio: str, estado: str, vigencia: str,
+        } },
       // Admin decisions: who decided, when, and the reason the person sees.
       reason: optStr, decided_by: optStr, decided_at: optStr, deactivated_reason: optStr,
       // Trades added after approval wait here until an admin reviews them.
       pending_trades: { bsonType: ["array", "null"], items: str } },
-    optional: ["reason", "decided_by", "decided_at", "deactivated_reason", "pending_trades"],
+    optional: ["identity", "reason", "decided_by", "decided_at", "deactivated_reason", "pending_trades"],
     index: [{ trade: 1, status: 1 }, { trades: 1 }],
   },
   requests: {

@@ -296,6 +296,12 @@ nav button.active { color: var(--green); background: #f5e3d9; }
 .admin-section-title { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 18px; }
 .admin-section-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .admin-dashboard, .review-queue { display: grid; gap: 30px; }
+.admin-identity { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+.admin-identity h3 { margin: 0 0 6px; font-size: 17px; }
+.admin-identity > p { margin: 0 0 12px; font-size: 13px; }
+.admin-identity-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+.admin-identity-facts div { min-width: 0; }
+@media (max-width: 600px) { .admin-identity-facts { grid-template-columns: minmax(0, 1fr); } }
 .count-pill { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--sand); font-size: 13px; font-weight: 700; color: var(--ink); }
 .attention-list { display: grid; gap: 8px; }
 .attention-item { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e8c9a8; border-radius: 14px; background: #fff7ee; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }

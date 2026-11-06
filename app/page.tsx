@@ -20,6 +20,13 @@ import {AccountPage} from '../components/account/account-page';
 import {ForgotPage,ResetPage} from '../components/account/password-recovery';
 
 const money=(n:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(n);
+async function sendImageUpload(kind:'photo'|'document'|'problem'|'before'|'after'|'avatar',file:File,request?:string){
+  const data=new FormData();data.set('file',file);data.set('kind',kind);if(request)data.set('request',request);
+  const response=await fetch('/api/upload',{method:'POST',body:data});
+  const result=await readApiResponse<{id?:string}>(response);
+  if(!result.id)throw new Error('No se pudo subir la imagen.');
+  return result.id;
+}
 function Upload({kind,request,currentId,onDone,label}:{kind:'photo'|'document'|'problem'|'before'|'after'|'avatar';request?:string;currentId?:string;onDone:(id:string)=>void|Promise<void>;label:string}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const [selectedName,setSelectedName]=useState('');
@@ -29,7 +36,7 @@ function Upload({kind,request,currentId,onDone,label}:{kind:'photo'|'document'|'
     const f=e.target.files?.[0];if(!f)return;setError('');setSelectedName(f.name);
     if(!['image/png','image/jpeg','image/webp'].includes(f.type)){setError('Selecciona una imagen PNG, JPG o WebP.');setSelectedName('');e.target.value='';return}
     if(f.size===0||f.size>5*1024*1024){setError('La imagen debe contener datos y pesar como máximo 5 MB.');setSelectedName('');e.target.value='';return}
-    setBusy(true);try{const d=new FormData();d.set('file',f);d.set('kind',kind);if(request)d.set('request',request);const r=await fetch('/api/upload',{method:'POST',body:d});const j=await readApiResponse<{id?:string}>(r);if(!j.id)throw new Error('No se pudo subir la imagen.');await onDone(j.id);setUploaded({id:j.id,name:f.name})}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo subir la imagen.')}finally{setBusy(false);setSelectedName('');e.target.value=''}
+    setBusy(true);try{const id=await sendImageUpload(kind,f,request);await onDone(id);setUploaded({id,name:f.name})}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo subir la imagen.')}finally{setBusy(false);setSelectedName('');e.target.value=''}
   }}/></label>{busy&&<p className="upload-progress" role="status">Subiendo {selectedName}…</p>}{shown&&<div className="upload-confirmation" role="status">{kind==='document'?<LockKeyhole size={21} aria-hidden="true"/>:<RemoteImage src={'/api/files/'+shown.id} alt="Vista previa de la imagen cargada"/>}<span><strong>Imagen cargada</strong>{shown.name&&<small title={shown.name}>{shown.name}</small>}{kind==='document'&&<small>Documento privado</small>}</span><CheckCircle2 size={19} aria-hidden="true"/></div>}{error&&<p className="field-error" role="alert">{error}</p>}</div>
 }
 export default function Page(){return <FeedbackProvider><Home/></FeedbackProvider>}
@@ -124,7 +131,7 @@ function go(p:string,u:any=user,app:any=application){
   setMenuOpen(false);setPage(p);setSelected(null);setProfile(null);setJustPublishedId('');setError('');setPersonId('');if(p==='home')setAdminTab('tablero');
   if(wasMobileMenuOpen)window.requestAnimationFrame(()=>window.document.getElementById('main-content')?.focus({preventScroll:true}));
 }
-function signedOut(){setUser(null);setApplication(null);go('explore',null,null)}
+function signedOut(){setUser(null);setApplication(null);setPhoto('');setDocument('');go('explore',null,null)}
 async function act(fn:()=>Promise<any>){setError('');try{await fn()}catch(e:any){setError(e.message)}}
 async function detail(id:string){setSelected(await api('requests/'+id))}
 async function change(path:string,data:any){await api(path,data);await detail(selected.id);await load();toast(({quote:'Cotización enviada. El cliente debe abrir su solicitud y aceptar la propuesta.',accept:'Propuesta aceptada. El proveedor ya puede ver este servicio en Mis trabajos.',finish:'Trabajo terminado. Falta que el cliente revise las evidencias y confirme.',confirm:'Servicio completado. Ahora puedes guardar tu calificación y comentario.',review:'Evaluación guardada en el perfil del proveedor.',cancel:'Solicitud cancelada.',report:'Reporte enviado. Administración revisará el caso y verás su decisión en la solicitud.'} as Record<string,string>)[path]||'Cambio guardado.')}
@@ -180,7 +187,8 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
 {['login','register'].includes(page)&&<AccessPage signupOpen={signupOpen} onExplore={focusCatalog} onForgot={()=>go('forgot')} onSubmit={async(mode,values)=>{await api(mode,values);await me();go(authDestination||'home');setAuthDestination('');window.scrollTo({top:0})}}/>}
 {view==='apply'&&<ProviderApplication authenticated={!!user} application={application} photoId={photo} documentId={document}
   photoUpload={<Upload kind="photo" currentId={photo} label={photo?'Cambiar foto de perfil':'Subir foto de perfil'} onDone={setPhoto}/>}
-  documentUpload={<Upload kind="document" currentId={document} label={document?'Cambiar documento':'Subir documento de identificación'} onDone={setDocument}/>}
+  onUploadDocument={file=>sendImageUpload('document',file)}
+  onDocumentAttached={setDocument}
   onLogin={()=>{setAuthDestination('apply');go('login')}}
   onOpportunities={()=>go('available')}
   onSubmit={async values=>{await api('apply',{...values,photo,document});await me();toast('Tu registro como proveedor quedó pendiente de revisión.')}}

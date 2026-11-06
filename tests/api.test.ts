@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs';
 import {ensureCollections} from '../db/collections';
 import {handle} from '../lib/api';
 import {price,stars,date} from '../lib/rules';
+import {validateIneIdentity,ineIdentityErrors} from '../lib/ine-identity';
 import {preparePresentation,presentationIds} from '../lib/presentation-data';
 import {serviceLocation,directionsUrl} from '../lib/service-location';
 async function fixture(){const server=await MongoMemoryServer.create();const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
@@ -13,6 +14,29 @@ const records:any[]=[];
 async function request(env:any,path:string,data?:any,cookie='',expected=200,extra:any={}){const headers:any={...extra};if(cookie)headers.cookie=cookie;let body:any;if(data instanceof FormData)body=data;else if(data!==undefined){body=JSON.stringify(data);headers['content-type']='application/json'}const r=await handle(new Request('https://trade.test/api/'+path,{method:data===undefined?'GET':'POST',headers,body}),env);const result=await r.json();assert.equal(r.status,expected,`${path}: ${JSON.stringify(result)}`);return {data:result as any,cookie:r.headers.get('set-cookie')?.split(';')[0]||cookie}}
 const credentials=(name:string)=>({name,email:name+'@example.test',password:'Test-password-unique-42'});
 const png=readFileSync('public/demo-assets/antes.png');
+// Structurally valid synthetic data. It is not a real identity or document.
+const identity={nombres:'LUIS',apellidoPaterno:'GOMEZ',apellidoMaterno:'LOPEZ',fechaNacimiento:'1990-01-01',sexo:'H',curp:'GOML900101HDFRRN09',calleNumero:'Calle Ficticia 10',colonia:'Centro',codigoPostal:'00100',municipio:'Ciudad de México',estado:'Ciudad de México',vigencia:'2020-2030'};
+
+test('Datos privados de INE: validación estructural y exclusión de campos ajenos',()=>{
+ const normalized=validateIneIdentity({...identity,curp:' goml 900101 hdfr rn09 '});
+ assert.equal(normalized.curp,identity.curp);
+ assert.equal(normalized.codigoPostal,'00100');
+ assert.equal(normalized.apellidoMaterno,'LOPEZ');
+ assert.equal(validateIneIdentity({...identity,sexo:'NB'}).sexo,'NB');
+ assert.equal(validateIneIdentity({...identity,sexo:'NB',curp:'GOML900101XDFRRN09'}).sexo,'NB');
+ for(const patch of [{curp:'GOML990299HDFRRN09'},{curp:'GOML900101MDFRRN09'},{sexo:''},{codigoPostal:'100'},{fechaNacimiento:'2099-01-01'},{fechaNacimiento:'1990-02-30'},{fechaNacimiento:'0000-01-01'},{fechaNacimiento:'1991-01-01'},{vigencia:'2030-2020'}])
+  assert.throws(()=>validateIneIdentity({...identity,...patch}));
+ assert.ok(ineIdentityErrors({...identity,curp:'BAD'}).curp);
+ assert.throws(()=>validateIneIdentity({...identity,claveElector:'NO DEBE EXISTIR'}));
+});
+
+test('La base de datos conserva el marcador NB en un registro privado',async t=>{
+ const {db,close}=await fixture();t.after(close);
+ const synthetic=validateIneIdentity({...identity,sexo:'NB',curp:'GOML900101XDFRRN09'});
+ await db.collection('providers').insertOne({id:'ine-nb-sintetico',trade:'Plomería',trades:['Plomería'],experience:'Ejemplo',zone:'Ejemplo',description:'Ejemplo',photo:'archivo-ejemplo',document:'documento-ejemplo',identity:synthetic,status:'Pendiente',active:true});
+ const record=await db.collection('providers').findOne({id:'ine-nb-sintetico'});
+ assert.equal(record?.identity.sexo,'NB');
+});
 
 test('Mapa opcional: compatibilidad, coordenadas válidas y privacidad hasta la asignación',async(t)=>{
  const {db,env,close}=await fixture();t.after(close);
@@ -95,16 +119,23 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  const worker=await request(env,'register',credentials('luis')),other=await request(env,'register',credentials('other')),admin=await request(env,'register',credentials('admin'));await db.collection('users').updateOne({email:'admin@example.test'},{$set:{role:'admin'}});const workerId=(await request(env,'me',undefined,worker.cookie)).data.user.id;
  await request(env,'applications',undefined,client.cookie,403);await request(env,'approve',{id:workerId},client.cookie,403);await request(env,'requests?scope=available',undefined,worker.cookie,403);
  const photo=(await upload(env,worker.cookie,'photo')).data.id,document=(await upload(env,worker.cookie,'document')).data.id;
- await request(env,'apply',{trade:'Plomería',experience:'5 años',zone:'León',description:'Plomería residencial',photo,document},worker.cookie,201);assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.status,'Pendiente');assert.equal((await request(env,'providers')).data.length,0);ok('HU-03','Solicitud pendiente con documentos e información obligatoria');
- for(const [cookie,expected] of [[worker.cookie,200],[admin.cookie,200],[other.cookie,403],['',403]] as const){const headers=new Headers();if(cookie)headers.set('cookie',cookie);const response=await handle(new Request('https://trade.test/api/files/'+document,{headers}),env);assert.equal(response.status,expected)}
+ await request(env,'apply',{trade:'Plomería',experience:'5 años',zone:'León',description:'Plomería residencial',photo,document},worker.cookie,400);
+ await request(env,'apply',{trade:'Plomería',experience:'5 años',zone:'León',description:'Plomería residencial',photo,document,identity:{...identity,claveElector:'PROHIBIDO'}},worker.cookie,400);
+ await request(env,'apply',{trade:'Plomería',experience:'5 años',zone:'León',description:'Plomería residencial',photo,document,identity},worker.cookie,201);
+ const ownApplication=(await request(env,'me',undefined,worker.cookie)).data.application;
+ assert.equal(ownApplication.status,'Pendiente');assert.deepEqual(ownApplication.identity,identity);
+ assert.equal((await request(env,'providers')).data.length,0);
+ const adminApplication=(await request(env,'applications',undefined,admin.cookie)).data.find((item:any)=>item.id===workerId);
+ assert.deepEqual(adminApplication.identity,identity);ok('HU-03','Solicitud pendiente con documentos e información obligatoria');
+ for(const [cookie,expected] of [[worker.cookie,200],[admin.cookie,200],[other.cookie,403],['',403]] as const){const headers=new Headers();if(cookie)headers.set('cookie',cookie);const response=await handle(new Request('https://trade.test/api/files/'+document,{headers}),env);assert.equal(response.status,expected);if(expected===200)assert.equal(response.headers.get('cache-control'),'private, no-store')}
  await request(env,'approve',{id:workerId},admin.cookie);assert.equal((await request(env,'me',undefined,worker.cookie)).data.application.status,'Aprobada');ok('HU-04','Solo administración aprueba y habilita proveedores');
  await request(env,'requests',{trade:'Plomería',description:'Fuga en mi casa',date:'2099-01-01'},worker.cookie,403);await request(env,'requests',{trade:'Pintura',description:'Pintar recámara',date:'2099-01-01'},worker.cookie,201);ok('Flujo','Un proveedor no publica solicitudes de su propio oficio, pero sí de otros');
- const rita=await request(env,'register',credentials('rita'));const ritaPhoto=(await upload(env,rita.cookie,'photo')).data.id,ritaDoc=(await upload(env,rita.cookie,'document')).data.id;const ritaApply={trade:'Electricidad',experience:'2 años',zone:'León',description:'Instalaciones',photo:ritaPhoto,document:ritaDoc};
+ const rita=await request(env,'register',credentials('rita'));const ritaPhoto=(await upload(env,rita.cookie,'photo')).data.id,ritaDoc=(await upload(env,rita.cookie,'document')).data.id;const ritaApply={trade:'Electricidad',experience:'2 años',zone:'León',description:'Instalaciones',photo:ritaPhoto,document:ritaDoc,identity};
  await request(env,'apply',ritaApply,rita.cookie,201);assert.equal((await request(env,'applications',undefined,admin.cookie)).data[0].status,'Pendiente');await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id},client.cookie,403);await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id},admin.cookie,400);await request(env,'reject',{id:(await request(env,'me',undefined,rita.cookie)).data.user.id,reason:'La identificación no se lee.'},admin.cookie);assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.reason,'La identificación no se lee.');assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.status,'Rechazada');await request(env,'apply',ritaApply,rita.cookie,201);assert.equal((await request(env,'me',undefined,rita.cookie)).data.application.status,'Pendiente');await request(env,'apply',ritaApply,rita.cookie,409);ok('Flujo','Administración rechaza registros pendientes; el proveedor puede volver a enviarlo');
  await request(env,'users',undefined,client.cookie,403);const people=(await request(env,'users',undefined,admin.cookie)).data;assert.ok(people.length>=4);assert.ok(people.every((p:any)=>p.hash===undefined&&p.salt===undefined));assert.equal(people.find((p:any)=>p.id===workerId).provider_status,'Aprobada');ok('Administración','Directorio de clientes y proveedores solo para administración y sin contraseñas');
  await request(env,'requests',{trade:'Pintura',description:'Prueba de administración',date:'2099-01-01'},admin.cookie,403);ok('Administración','Las cuentas de administración no publican solicitudes de servicio');
- const adminPhoto=(await upload(env,admin.cookie,'photo')).data.id,adminDoc=(await upload(env,admin.cookie,'document')).data.id;await request(env,'apply',{trade:'Pintura',experience:'1 año',zone:'León',description:'Prueba',photo:adminPhoto,document:adminDoc},admin.cookie,403);assert.equal((await request(env,'me',undefined,admin.cookie)).data.application,null);ok('Administración','Las cuentas de administración no se registran como proveedores');
- const found=(await request(env,'providers?trade='+encodeURIComponent('Plomería'))).data;assert.equal(found.length,1);assert.equal((await request(env,'providers?trade='+encodeURIComponent('Pintura'))).data.length,0);ok('HU-05','Filtro por oficio y exclusión de perfiles pendientes');const profile=(await request(env,'providers/'+workerId)).data;for(const key of ['name','photo','trade','experience','description','status'])assert.ok(profile[key]);assert.equal(profile.document,undefined);ok('HU-06','Perfil público completo sin documento privado');await request(env,'files/'+document,undefined,other.cookie,403);
+ const adminPhoto=(await upload(env,admin.cookie,'photo')).data.id,adminDoc=(await upload(env,admin.cookie,'document')).data.id;await request(env,'apply',{trade:'Pintura',experience:'1 año',zone:'León',description:'Prueba',photo:adminPhoto,document:adminDoc,identity},admin.cookie,403);assert.equal((await request(env,'me',undefined,admin.cookie)).data.application,null);ok('Administración','Las cuentas de administración no se registran como proveedores');
+ const found=(await request(env,'providers?trade='+encodeURIComponent('Plomería'))).data;assert.equal(found.length,1);assert.equal(found[0].identity,undefined);assert.equal((await request(env,'providers?trade='+encodeURIComponent('Pintura'))).data.length,0);ok('HU-05','Filtro por oficio y exclusión de perfiles pendientes');const profile=(await request(env,'providers/'+workerId)).data;for(const key of ['name','photo','trade','experience','description','status'])assert.ok(profile[key]);assert.equal(profile.document,undefined);assert.equal(profile.identity,undefined);ok('HU-06','Perfil público completo sin documento privado');await request(env,'files/'+document,undefined,other.cookie,403);
  const future='2099-01-01';const rid=(await request(env,'requests',{trade:'Plomería',description:'Fuga bajo el lavabo',date:future},client.cookie,201)).data.id;ok('HU-08','Solicitud asociada a su cliente');await request(env,'requests',{trade:'Otro',description:'Fuga',date:future},client.cookie,400);
  const problem=(await upload(env,client.cookie,'problem',rid)).data.id;assert.ok((await request(env,'requests/'+rid,undefined,client.cookie)).data.files.some((f:any)=>f.id===problem));assert.equal((await request(env,'requests?scope=mine',undefined,client.cookie)).data.find((item:any)=>item.id===rid).problem_file,problem);ok('HU-09','Imagen almacenada y asociada a solicitud');await upload(env,other.cookie,'problem',rid,403);
  const bad=new FormData();bad.set('file',new File(['<script>bad</script>'],'fake.png',{type:'image/png'}));bad.set('kind','photo');await request(env,'upload',bad,client.cookie,400);
@@ -123,14 +154,14 @@ test('Flujo integrado completo de 20 historias y permisos',async(t)=>{const {db,
  await request({...env,DEMO_ENABLED:'false'},'demo',{role:'admin'},'',403);
  // Several trades per provider: catalog, opportunities and own-trade rule use the whole list.
  const multi=await request(env,'register',credentials('multi'));const multiId=(await request(env,'me',undefined,multi.cookie)).data.user.id;const multiPhoto=(await upload(env,multi.cookie,'photo')).data.id,multiDoc=(await upload(env,multi.cookie,'document')).data.id;
- await request(env,'apply',{trades:[],experience:'x',zone:'León',description:'x',photo:multiPhoto,document:multiDoc},multi.cookie,400);await request(env,'apply',{trades:['Pintura','Cerrajería','Pintura'],experience:'4 años',zone:'León',description:'Pintura y cerraduras',photo:multiPhoto,document:multiDoc},multi.cookie,201);
+ await request(env,'apply',{trades:[],experience:'x',zone:'León',description:'x',photo:multiPhoto,document:multiDoc,identity},multi.cookie,400);await request(env,'apply',{trades:['Pintura','Cerrajería','Pintura'],experience:'4 años',zone:'León',description:'Pintura y cerraduras',photo:multiPhoto,document:multiDoc,identity},multi.cookie,201);
  const multiApp=(await request(env,'me',undefined,multi.cookie)).data.application;assert.deepEqual(multiApp.trades,['Pintura','Cerrajería']);assert.equal(multiApp.trade,'Pintura');await request(env,'approve',{id:multiId},admin.cookie);
  for(const t of ['Pintura','Cerrajería'])assert.ok((await request(env,'providers?trade='+encodeURIComponent(t))).data.some((p:any)=>p.id===multiId));
  const lockReq=(await request(env,'requests',{trade:'Cerrajería',description:'Cambiar chapa',date:'2099-01-01'},other.cookie,201)).data.id;assert.ok((await request(env,'requests?scope=available',undefined,multi.cookie)).data.some((r:any)=>r.id===lockReq));await request(env,'quote',{request:lockReq,price:300,description:'Chapa nueva'},multi.cookie,201);
  await request(env,'requests',{trade:'Cerrajería',description:'Propio',date:'2099-01-01'},multi.cookie,403);ok('Oficios','Un proveedor ofrece varios oficios: catálogo, oportunidades, cotización y regla de oficio propio');
  // Direct requests: asked to one provider, only that provider sees, opens and quotes them.
  const painter=await request(env,'register',credentials('painter'));const painterId=(await request(env,'me',undefined,painter.cookie)).data.user.id;const painterPhoto=(await upload(env,painter.cookie,'photo')).data.id,painterDoc=(await upload(env,painter.cookie,'document')).data.id;
- await request(env,'apply',{trades:['Pintura'],experience:'3 años',zone:'León',description:'Pintura',photo:painterPhoto,document:painterDoc},painter.cookie,201);await request(env,'approve',{id:painterId},admin.cookie);
+ await request(env,'apply',{trades:['Pintura'],experience:'3 años',zone:'León',description:'Pintura',photo:painterPhoto,document:painterDoc,identity},painter.cookie,201);await request(env,'approve',{id:painterId},admin.cookie);
  await request(env,'requests',{trade:'Plomería',description:'No la ofrece',date:'2099-01-01',provider:multiId},other.cookie,400);await request(env,'requests',{trade:'Pintura',description:'Inexistente',date:'2099-01-01',provider:'no-existe'},other.cookie,404);await request(env,'requests',{trade:'Pintura',description:'Objeto',date:'2099-01-01',provider:{$ne:null}},other.cookie,400);
  const direct=(await request(env,'requests',{trade:'Pintura',description:'Pintar sala, solo para multi',date:'2099-01-01',provider:multiId},other.cookie,201)).data.id;
  assert.ok((await request(env,'requests?scope=available',undefined,multi.cookie)).data.some((r:any)=>r.id===direct));assert.ok(!(await request(env,'requests?scope=available',undefined,painter.cookie)).data.some((r:any)=>r.id===direct));
@@ -182,7 +213,7 @@ test('Administración: tablero, ficha de persona, motivos y bitácora',async(t)=
  const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
  const luis=await request(env,'register',credentials('luis'));const luisId=(await request(env,'me',undefined,luis.cookie)).data.user.id;
  const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
- await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document},luis.cookie,201);
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document,identity},luis.cookie,201);
  await request(env,'admin/summary',undefined,luis.cookie,403);
  let summary=(await request(env,'admin/summary',undefined,boss.cookie)).data;assert.equal(summary.attention.registrations,1);assert.equal(summary.roles.admin,1);assert.equal(summary.week.people,2);
  await request(env,'approve',{id:luisId},boss.cookie);
@@ -233,7 +264,7 @@ test('Equipo y ajustes: permisos de administración y reglas de la plataforma',a
  await request(env,'admin/role',{id:bossId,admin:false},ana.cookie,409);
  await db.collection('users').updateOne({id:bossId},{$set:{active:true}});
  const luis=await request(env,'register',credentials('luis'));const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
- await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document},luis.cookie,201);
+ await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document,identity},luis.cookie,201);
  await request(env,'admin/role',{email:'luis@example.test',admin:true},boss.cookie,409);
  // Settings
  assert.deepEqual((await request(env,'settings')).data,{registrationOpen:true,providerApplicationsOpen:true});
@@ -242,7 +273,7 @@ test('Equipo y ajustes: permisos de administración y reglas de la plataforma',a
  await request(env,'register',credentials('tarde'),'',403);
  await request(env,'requests',{trade:'Plomería',description:'Una',date:'2099-01-01'},luis.cookie,201);await request(env,'requests',{trade:'Plomería',description:'Dos',date:'2099-01-01'},luis.cookie,409);
  const rejected=await db.collection('users').findOne({email:'luis@example.test'});await request(env,'reject',{id:rejected!.id,reason:'Prueba'},boss.cookie);
- await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document},luis.cookie,403);
+ await request(env,'apply',{trades:['Pintura'],experience:'1 año',zone:'León',description:'Pintura',photo,document,identity},luis.cookie,403);
  assert.ok(await db.collection('audit_log').findOne({action:'settings.update'}));assert.ok(await db.collection('audit_log').findOne({action:'role.admin'}));
 });
 test('Ciclo de solicitudes y moderación: cancelar, vencer, reportar, resolver y ocultar reseñas',async(t)=>{const {db,env,close}=await fixture();t.after(close);
@@ -250,7 +281,7 @@ test('Ciclo de solicitudes y moderación: cancelar, vencer, reportar, resolver y
  const ana=await request(env,'register',credentials('ana')),otro=await request(env,'register',credentials('otro'));
  const luis=await request(env,'register',credentials('luis'));const luisId=(await request(env,'me',undefined,luis.cookie)).data.user.id;
  const photo=(await upload(env,luis.cookie,'photo')).data.id,document=(await upload(env,luis.cookie,'document')).data.id;
- await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document},luis.cookie,201);await request(env,'approve',{id:luisId},boss.cookie);
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document,identity},luis.cookie,201);await request(env,'approve',{id:luisId},boss.cookie);
  const post=async(description:string)=>(await request(env,'requests',{trade:'Plomería',description,date:'2099-01-01'},ana.cookie,201)).data.id as string;
  // Cancel
  const c1=await post('Cancelar');await request(env,'quote',{request:c1,price:300,description:'Visita'},luis.cookie,201);
