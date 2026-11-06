@@ -191,6 +191,7 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
   onDocumentAttached={setDocument}
   onLogin={()=>{setAuthDestination('apply');go('login')}}
   onOpportunities={()=>go('available')}
+  onIdentityCorrected={async()=>{await me();toast('Correcciones enviadas para una nueva revisión.')}}
   onSubmit={async values=>{await api('apply',{...values,photo,document});await me();toast('Tu registro como proveedor quedó pendiente de revisión.')}}
 />}
 {page==='create'&&<CreateRequestPage key={requestTrade+(requestTarget?.id||'')} initialTrade={ownTrades.includes(requestTrade)?'':requestTrade} excludeTrades={ownTrades} target={requestTarget} onClearTarget={()=>setRequestTarget(null)} onSubmit={async(values)=>{const r=await api('requests',{...values,...(requestTarget?{provider:requestTarget.id}:{})});setRequestTarget(null);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}

@@ -58,3 +58,7 @@ next-env.d.ts
 /work/
 .test-output/
 *.tsbuildinfo
+/public/ocr/opencv.js
+/public/ocr/opencv.LICENSE
+/test-results/
+/playwright-report/

@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {AutomaticIneReview} from './automatic-ine-review';
 import {ArrowRight,ClipboardList,Copy,FileLock2,KeyRound,UserRound} from 'lucide-react';
 import {RemoteImage} from '../trade/remote-image';
 import {fileSrc} from '../../lib/design-images';
@@ -49,6 +50,7 @@ export function ReviewQueue({api,onPerson}:{api:Api;onPerson:(id:string)=>void})
   }
   async function copy(link:string){try{await navigator.clipboard.writeText(link);toast('Enlace copiado.','info')}catch{toast('No se pudo copiar; selecciona el enlace y cópialo.','error')}}
   return <div className="review-queue">
+    <AutomaticIneReview api={api} items={items} onItems={setItems}/>
     <section aria-labelledby="queue-registrations">
       <h2 id="queue-registrations" className="admin-section-title">Registros de proveedor <span className="count-pill">{items.length}</span></h2>
       {items.length?<div className="admin-grid"><div className="admin-list"><div className="admin-items">{items.map(item=><button key={item.id} type="button" className="admin-item" aria-current={selected?.id===item.id?'true':undefined} onClick={()=>setSelectedId(item.id)}><span className="admin-item-photo">{item.photo?<RemoteImage src={fileSrc(item.photo,item.photo_url)} alt=""/>:<UserRound size={24}/>}</span><span className="admin-item-copy"><strong>{item.name}</strong><small>{tradesOf(item).join(', ')} · {item.zone}</small></span><ArrowRight size={17}/></button>)}</div></div>
@@ -56,6 +58,7 @@ export function ReviewQueue({api,onPerson}:{api:Api;onPerson:(id:string)=>void})
           <div className="admin-person"><span className="admin-person-photo">{selected.photo?<RemoteImage src={fileSrc(selected.photo,selected.photo_url)} alt={`Foto de perfil de ${selected.name}`}/>:<UserRound size={32}/>}</span><div><span className="status" data-status="Pendiente">Pendiente</span><h2>{selected.name}</h2><p>{tradesOf(selected).join(', ')} · {selected.zone}</p><button type="button" className="text-button" onClick={()=>onPerson(selected.id)}>Ver ficha completa</button></div></div>
           <dl className="admin-facts"><div><dt>Oficios</dt><dd>{tradesOf(selected).join(', ')}</dd></div><div><dt>Zona</dt><dd>{selected.zone}</dd></div><div><dt>Experiencia</dt><dd>{selected.experience}</dd></div><div><dt>Descripción</dt><dd>{selected.description}</dd></div></dl>
           <section className="admin-identity" aria-labelledby="admin-identity-title">
+            {selected.analysis&&<div className="ine-analysis-summary"><h3>Resultado del análisis</h3><p>{selected.analysis.outcome==='approved'?'Aprobado automáticamente':'Requiere revisión manual'} · {when(selected.analysis.at)}</p><ul>{selected.analysis.reasons.map((reason:string,index:number)=><li key={index}>{reason}</li>)}</ul><details><summary>Comparar las dos lecturas y los datos declarados</summary><div className="ine-analysis-table"><table><thead><tr><th>Campo</th><th>Declarado</th><th>Original</th><th>Procesado</th></tr></thead><tbody>{selected.analysis.fields.map((field:any)=><tr key={field.field}><th>{identityFields.find(f=>f.key===field.field)?.label||field.field}</th><td>{field.declared||'—'}</td><td>{field.original||'Sin lectura'} ({Math.round(field.confidenceOriginal)}%)</td><td>{field.processed||'Sin lectura'} ({Math.round(field.confidenceProcessed)}%)</td></tr>)}</tbody></table></div></details></div>}
             <h3 id="admin-identity-title">Datos declarados de la identificación</h3>
             {selected.identity?<>
               <p className="muted">Revisa estos datos junto con el documento. Su formato no confirma oficialmente la identidad.</p>

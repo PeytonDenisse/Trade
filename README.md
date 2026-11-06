@@ -1,5 +1,7 @@
 # Trade — POC académica
 
+La [revisión automática de INE](docs/revision-automatica-ine.md) explica el OCR local, las reglas de aprobación, la preparación compatible de la base y las pruebas de navegador.
+
 Para presentar el flujo de cliente, proveedor y administración, consulta [el guion paso a paso con cuentas y contraseñas](docs/demo-presentacion.md). Usa **Cuentas de presentación** para seguir un solo servicio desde su creación hasta la reseña.
 
 Aplicación para solicitar servicios de oficios y seguir su contratación hasta la evaluación.

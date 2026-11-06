@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {MongoClient} from 'mongodb';
-import {MongoMemoryServer} from 'mongodb-memory-server';
+import {MongoMemoryReplSet} from 'mongodb-memory-server';
 import {readFileSync} from 'node:fs';
 import {ensureCollections} from '../db/collections';
 import {handle} from '../lib/api';
@@ -9,13 +9,60 @@ import {price,stars,date} from '../lib/rules';
 import {validateIneIdentity,ineIdentityErrors} from '../lib/ine-identity';
 import {preparePresentation,presentationIds} from '../lib/presentation-data';
 import {serviceLocation,directionsUrl} from '../lib/service-location';
-async function fixture(){const server=await MongoMemoryServer.create();const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
+import {identityKeys,INE_ANALYSIS_VERSION} from '../lib/ine-analysis';
+async function fixture(){const server=await MongoMemoryReplSet.create({replSet:{count:1}});const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
 const records:any[]=[];
 async function request(env:any,path:string,data?:any,cookie='',expected=200,extra:any={}){const headers:any={...extra};if(cookie)headers.cookie=cookie;let body:any;if(data instanceof FormData)body=data;else if(data!==undefined){body=JSON.stringify(data);headers['content-type']='application/json'}const r=await handle(new Request('https://trade.test/api/'+path,{method:data===undefined?'GET':'POST',headers,body}),env);const result=await r.json();assert.equal(r.status,expected,`${path}: ${JSON.stringify(result)}`);return {data:result as any,cookie:r.headers.get('set-cookie')?.split(';')[0]||cookie}}
 const credentials=(name:string)=>({name,email:name+'@example.test',password:'Test-password-unique-42'});
 const png=readFileSync('public/demo-assets/antes.png');
 // Structurally valid synthetic data. It is not a real identity or document.
 const identity={nombres:'LUIS',apellidoPaterno:'GOMEZ',apellidoMaterno:'LOPEZ',fechaNacimiento:'1990-01-01',sexo:'H',curp:'GOML900101HDFRRN09',calleNumero:'Calle Ficticia 10',colonia:'Centro',codigoPostal:'00100',municipio:'Ciudad de México',estado:'Ciudad de México',vigencia:'2020-2030'};
+
+test('Revisión automática: permisos, evidencia, idempotencia, carreras y transacción completa',async(t)=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const admin=await request(env,'register',credentials('admin-analisis'));
+ const adminId=(await request(env,'me',undefined,admin.cookie)).data.user.id;
+ await db.collection('users').updateOne({id:adminId},{$set:{role:'admin'}});
+ async function applicant(name:string,curp:string){
+  const session=await request(env,'register',credentials(name));
+  const id=(await request(env,'me',undefined,session.cookie)).data.user.id;
+  const photo=(await upload(env,session.cookie,'photo')).data.id,document=(await upload(env,session.cookie,'document')).data.id;
+  const declared={...identity,curp};
+  await request(env,'apply',{trades:['Plomería'],experience:'Experiencia de prueba',zone:'León',description:'Prueba sintética',photo,document,identity:declared,analysis:{outcome:'approved'}},session.cookie,201);
+  const reading={values:declared,confidence:Object.fromEntries(identityKeys.map(k=>[k,96]))};
+  return {session,id,document,payload:{id,document,runId:crypto.randomUUID(),evidence:{original:reading,processed:reading,warnings:[]}}};
+ }
+ const a=await applicant('proveedor-auto','GOML900101HDFRRN09');
+ assert.equal((await db.collection('providers').findOne({id:a.id}))?.analysis,undefined);
+ await request(env,'admin/provider-analysis',a.payload,a.session.cookie,403);
+ await request(env,'admin/provider-analysis',{...a.payload,document:'documento-anterior'},admin.cookie,409);
+ const result=(await request(env,'admin/provider-analysis',a.payload,admin.cookie)).data;
+ assert.equal(result.approved,true);assert.equal(result.analysis.version,INE_ANALYSIS_VERSION);
+ assert.equal((await request(env,'me',undefined,a.session.cookie)).data.user.role,'proveedor');
+ await request(env,'admin/provider-analysis',a.payload,admin.cookie);
+ assert.equal(await db.collection('audit_log').countDocuments({target:a.id,action:'provider.approve'}),1);
+ const profile=(await request(env,'providers/'+a.id)).data;assert.equal(profile.analysis,undefined);assert.equal(profile.identity,undefined);
+ const publicList=(await request(env,'providers')).data;assert.ok(publicList.every((p:any)=>p.analysis===undefined&&p.analysis_eligible===undefined));
+ const duplicate=await applicant('proveedor-duplicado','GOML900101HDFRRN09');
+ const review=(await request(env,'admin/provider-analysis',duplicate.payload,admin.cookie)).data;
+ assert.equal(review.approved,false);assert.ok(review.analysis.reasons.some((r:string)=>r.includes('misma CURP')));
+ assert.equal((await db.collection('providers').findOne({id:duplicate.id}))?.status,'Pendiente');
+ const replacement=(await upload(env,duplicate.session.cookie,'document')).data.id;
+ await request(env,'provider/identity-correction',{previousDocument:duplicate.document,document:replacement,identity:{...identity,curp:'GOML900101HDFRRK09'}},duplicate.session.cookie);
+ const corrected=await db.collection('providers').findOne({id:duplicate.id});assert.equal(corrected?.analysis,undefined);assert.equal(corrected?.status,'Pendiente');assert.deepEqual(corrected?.trades,['Plomería']);
+ await request(env,'admin/provider-analysis',{...duplicate.payload,runId:crypto.randomUUID()},admin.cookie,409);
+ const raced=await applicant('proveedor-carrera','GOML900101HDFRRM09');
+ const post=(path:string,data:any)=>handle(new Request('https://trade.test/api/'+path,{method:'POST',headers:{cookie:admin.cookie,'content-type':'application/json'},body:JSON.stringify(data)}),env);
+ const responses=await Promise.all([post('approve',{id:raced.id}),post('admin/provider-analysis',raced.payload)]);
+ assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
+ assert.equal(await db.collection('audit_log').countDocuments({target:raced.id,action:'provider.approve'}),1);
+ const rollback=await applicant('proveedor-rollback','GOML900101HDFRRL09');
+ await db.command({collMod:'audit_log',validator:{$jsonSchema:{bsonType:'object',required:['forced_failure']}}});
+ await request(env,'approve',{id:rollback.id},admin.cookie,400);
+ assert.equal((await db.collection('providers').findOne({id:rollback.id}))?.status,'Pendiente');
+ assert.equal((await db.collection('users').findOne({id:rollback.id}))?.role,'cliente');
+ assert.equal(await db.collection('audit_log').countDocuments({target:rollback.id}),0);
+});
 
 test('Datos privados de INE: validación estructural y exclusión de campos ajenos',()=>{
  const normalized=validateIneIdentity({...identity,curp:' goml 900101 hdfr rn09 '});

@@ -43,11 +43,14 @@ export const collections: Record<string, Def> = {
           municipio: str, estado: str, vigencia: str,
         } },
       // Admin decisions: who decided, when, and the reason the person sees.
+      analysis_eligible: bool,
+      analysis: { bsonType: "object", additionalProperties: false, required: ["version","engine","document","runId","at","by","outcome","reasons","fields"], properties: {
+        version: str, engine: str, document: str, runId: str, at: str, by: str, outcome: {enum:["approved","review"]}, reasons:{bsonType:"array",items:str}, fields:{bsonType:"array",items:{bsonType:"object"}} } },
       reason: optStr, decided_by: optStr, decided_at: optStr, deactivated_reason: optStr,
       // Trades added after approval wait here until an admin reviews them.
       pending_trades: { bsonType: ["array", "null"], items: str } },
-    optional: ["identity", "reason", "decided_by", "decided_at", "deactivated_reason", "pending_trades"],
-    index: [{ trade: 1, status: 1 }, { trades: 1 }],
+    optional: ["identity", "analysis", "analysis_eligible", "reason", "decided_by", "decided_at", "deactivated_reason", "pending_trades"],
+    index: [{ trade: 1, status: 1 }, { trades: 1 }, { 'identity.curp': 1 }],
   },
   requests: {
     key: "id",
