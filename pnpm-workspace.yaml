@@ -8,6 +8,7 @@ allowBuilds:
   fsevents: true
   mongodb-memory-server: false
   sharp: true
+  tesseract.js: set this to true or false
   unrs-resolver: true
   workerd: true
 storeDir: ${SITES_PNPM_SHARED_STORE:-.sites-runtime/pnpm-store}

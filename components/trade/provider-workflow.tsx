@@ -1,12 +1,14 @@
 'use client';
 import {useId,useState,type FormEvent,type ReactNode} from 'react';
-import {ArrowRight,BriefcaseBusiness,CalendarDays,Camera,CheckCircle2,ChevronLeft,ClipboardList,Image as ImageIcon,LockKeyhole,ShieldCheck,Wrench} from 'lucide-react';
+import {ArrowRight,BriefcaseBusiness,CalendarDays,Camera,CheckCircle2,ChevronLeft,ClipboardList,Image as ImageIcon,ShieldCheck,Wrench} from 'lucide-react';
 import {tradesOf} from '../../lib/rules';
 import {useTrades} from './trades-context';
 import {designImages,fileSrc} from '../../lib/design-images';
 import {RemoteImage} from './remote-image';
 import {ServiceMap} from './service-map';
 import type {ServiceLocation} from '../../lib/service-location';
+import {emptyIneDraft,ineIdentityErrors,validateIneIdentity,type IneIdentity} from '../../lib/ine-identity';
+import {IneIdentityCapture} from './ine-identity-capture';
 
 type Application={status:'Pendiente'|'Aprobada'|'Rechazada';active?:boolean;reason?:string|null;deactivated_reason?:string|null;trade:string;trades?:string[];experience:string;zone:string;description:string;photo?:string};
 type ApplicationValues={trades:string[];experience:string;zone:string;description:string};
@@ -16,10 +18,15 @@ const formatDate=(value:string)=>{const [year,month,day]=value.split('-').map(Nu
 const money=(value:number)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(value);
 function Status({value}:{value:string}){return <span className="status request-status" data-status={value}>{value}</span>}
 
-export function ProviderApplication({authenticated,application,photoId,documentId,photoUpload,documentUpload,onLogin,onOpportunities,onSubmit}:{authenticated:boolean;application:Application|null;photoId:string;documentId:string;photoUpload:ReactNode;documentUpload:ReactNode;onLogin:()=>void;onOpportunities:()=>void;onSubmit:(values:ApplicationValues)=>Promise<void>}){
+export function ProviderApplication({authenticated,application,photoId,documentId,photoUpload,onUploadDocument,onDocumentAttached,onLogin,onOpportunities,onSubmit}:{authenticated:boolean;application:Application|null;photoId:string;documentId:string;photoUpload:ReactNode;onUploadDocument:(file:File)=>Promise<string>;onDocumentAttached:(id:string)=>void;onLogin:()=>void;onOpportunities:()=>void;onSubmit:(values:ApplicationValues&{identity:IneIdentity})=>Promise<void>}){
   const id=useId();
   const trades=useTrades();
   const [values,setValues]=useState<ApplicationValues>({trades:[],experience:'',zone:'',description:''});
+  const [identity,setIdentity]=useState(emptyIneDraft);
+  const [identityErrors,setIdentityErrors]=useState<Partial<Record<keyof IneIdentity,string>>>({});
+  const [identityRequired,setIdentityRequired]=useState(false);
+  const [identityConfirmed,setIdentityConfirmed]=useState(false);
+  const [confirmationError,setConfirmationError]=useState('');
   const [errors,setErrors]=useState<Partial<Record<keyof ApplicationValues|'photo'|'document',string>>>({});
   const [formError,setFormError]=useState('');
   const [busy,setBusy]=useState(false);
@@ -36,17 +43,27 @@ export function ProviderApplication({authenticated,application,photoId,documentI
     if(!photoId)next.photo='Adjunta una foto de perfil.';
     if(!documentId)next.document='Adjunta una imagen de identificación para revisión.';
     setErrors(next);
+    const nextIdentityErrors=ineIdentityErrors(identity);
+    setIdentityErrors(nextIdentityErrors);
+    setIdentityRequired(true);
+    const missingConfirmation=!identityConfirmed;
+    setConfirmationError(missingConfirmation?'Confirma que revisaste los datos de identificación.':'');
     const first=Object.keys(next)[0];
-    if(first){if(first==='photo'||first==='document')document.querySelectorAll<HTMLInputElement>('.provider-application-images input[type=file]')[first==='photo'?0:1]?.focus();else document.getElementById(id+'-'+first)?.focus();return}
+    if(first){requestAnimationFrame(()=>{if(first==='photo')document.querySelector<HTMLInputElement>('.provider-application-images input[type=file]')?.focus();else if(first==='document')document.getElementById('ine-gallery-file')?.focus();else document.getElementById(id+'-'+first)?.focus()});return}
+    const firstIdentity=Object.keys(nextIdentityErrors)[0];
+    if(firstIdentity){requestAnimationFrame(()=>document.getElementById('ine-'+firstIdentity)?.focus());return}
+    if(missingConfirmation){requestAnimationFrame(()=>document.getElementById('ine-confirm')?.focus());return}
     setBusy(true);setFormError('');
-    try{await onSubmit({trades:trades.filter(t=>values.trades.includes(t)),experience:values.experience.trim(),zone:values.zone.trim(),description:values.description.trim()})}
+    try{await onSubmit({trades:trades.filter(t=>values.trades.includes(t)),experience:values.experience.trim(),zone:values.zone.trim(),description:values.description.trim(),identity:validateIneIdentity(identity)})}
     catch(cause){setFormError(cause instanceof Error?cause.message:'No se pudo enviar el registro.')}
     finally{setBusy(false)}
   }
   return <div className="provider-application"><section className="provider-application-hero"><div><p className="eyebrow">COMPARTE TU OFICIO</p><h1>{application&&application.status!=='Rechazada'?<>Tu perfil de <em>proveedor</em></>:<>Ofrece tus <em>servicios</em></>}</h1><p>Presenta tu experiencia y llega a personas que necesitan ayuda en casa. Trade revisará tu registro como proveedor antes de mostrar tu perfil en el catálogo.</p></div><figure><div className="provider-hero-images"><RemoteImage src={designImages.plumbing} alt="Trabajo de plomería, imagen ilustrativa"/><RemoteImage src={designImages.electrical} alt="Trabajo de electricidad, imagen ilustrativa"/><RemoteImage src={designImages.carpentry} alt="Trabajo de carpintería, imagen ilustrativa"/></div><figcaption>Imágenes ilustrativas de oficios</figcaption></figure></section>
     {!authenticated?<section className="provider-application-card"><h2>Inicia sesión para ofrecer tus servicios</h2><p>Tu registro como proveedor quedará asociado a tu cuenta de Trade.</p><button className="primary" onClick={onLogin}>Iniciar sesión <ArrowRight size={17}/></button></section>:application&&application.status!=='Rechazada'?<section className="provider-application-card provider-status-card"><div className="provider-status-icon">{application.status==='Aprobada'?<CheckCircle2 size={28}/>:<ShieldCheck size={28}/>}</div><div><p className="eyebrow">TU REGISTRO COMO PROVEEDOR</p><h2>{application.status==='Pendiente'?'Registro pendiente de revisión':application.active===false?'Perfil de proveedor desactivado':'Registro aprobado'}</h2><Status value={application.status}/><p>{application.status==='Pendiente'?'Trade está revisando tu registro. Tu perfil aparecerá en el catálogo cuando sea aprobado.':application.active===false?'Administración desactivó tu perfil de proveedor. No apareces en el catálogo ni puedes enviar cotizaciones; puedes terminar los trabajos que ya tenías asignados.':'Trade aprobó tu registro. Ya puedes consultar oportunidades de tus oficios.'}</p>{application.active===false&&application.deactivated_reason&&<p className="reason-note">Motivo: {application.deactivated_reason}</p>}<div className="provider-status-facts"><span><strong>{tradesOf(application).length>1?'Oficios':'Oficio'}</strong>{tradesOf(application).join(', ')}</span><span><strong>Zona</strong>{application.zone}</span><span><strong>Experiencia</strong>{application.experience}</span></div>{application.status==='Aprobada'&&application.active!==false&&<button className="primary" onClick={onOpportunities}>Ver oportunidades <ArrowRight size={17}/></button>}</div></section>:<section className="provider-application-card">{application?.status==='Rechazada'&&<p className="reason-note" role="status">Administración rechazó tu registro anterior{application.reason?': '+application.reason:'.'} Corrige lo necesario y envíalo de nuevo.</p>}<div className="provider-form-heading"><div><p className="eyebrow">DATOS PARA REVISIÓN</p><h2>{application?.status==='Rechazada'?'Envía un nuevo registro':'Completa tu registro'}</h2><p>{application?.status==='Rechazada'?'Tu registro anterior no fue aprobado. Revisa tus datos e imágenes y envíalo de nuevo.':'Cuéntanos qué haces y adjunta las dos imágenes solicitadas.'}</p></div></div><form onSubmit={submit} noValidate>{formError&&<p className="error" role="alert">{formError}</p>}<div className="provider-application-grid"><div className="provider-application-fields"><fieldset className="access-field trade-checks" id={id+'-trades'} tabIndex={-1} aria-describedby={errors.trades?id+'-trades-error':undefined}><legend>Oficios <small>(elige uno o más)</small></legend><div className="trade-check-grid">{trades.map(name=><label key={name} className={values.trades.includes(name)?'trade-check checked':'trade-check'}><input type="checkbox" checked={values.trades.includes(name)} onChange={()=>toggleTrade(name)}/>{name}</label>)}</div>{errors.trades&&<p className="field-error" id={id+'-trades-error'} role="alert">{errors.trades}</p>}</fieldset>
       {([['experience','Experiencia',500,'Describe tu experiencia en estos oficios.'],['zone','Zona de trabajo',200,'Indica las zonas donde ofreces tus servicios.'],['description','Descripción',2000,'Describe tus servicios y tu forma de trabajo.']] as const).map(([field,label,max,placeholder])=><div className="access-field" key={field}><label htmlFor={id+'-'+field}>{label}</label><textarea id={id+'-'+field} value={values[field]} onChange={event=>update(field,event.target.value)} maxLength={max} placeholder={placeholder} aria-invalid={!!errors[field]} aria-describedby={id+'-'+field+'-count'+(errors[field]?' '+id+'-'+field+'-error':'')}/><small id={id+'-'+field+'-count'}>{values[field].length}/{max} caracteres</small>{errors[field]&&<p className="field-error" id={id+'-'+field+'-error'} role="alert">{errors[field]}</p>}</div>)}</div>
-      <div className="provider-application-images"><div className="access-field"><label id={id+'-photo'}>Foto de perfil</label><div aria-labelledby={id+'-photo'}>{photoUpload}</div>{errors.photo&&!photoId&&<p className="field-error" role="alert">{errors.photo}</p>}<small>PNG, JPG o WebP · Máximo 5 MB.</small></div><div className="access-field"><label id={id+'-document'}>Documento de identificación</label><div aria-labelledby={id+'-document'}>{documentUpload}</div>{errors.document&&!documentId&&<p className="field-error" role="alert">{errors.document}</p>}<small>PNG, JPG o WebP · Máximo 5 MB.</small></div><p className="provider-private-note"><LockKeyhole size={19}/> La imagen de identificación es privada y se utiliza solo para revisar tu registro. No aparece en tu perfil público.</p></div></div><button className="primary provider-application-submit" disabled={busy} type="submit">{busy?'Enviando…':'Enviar registro'} <ArrowRight size={18}/></button></form></section>}
+      <div className="provider-application-images"><div className="access-field"><label id={id+'-photo'}>Foto de perfil</label><div aria-labelledby={id+'-photo'}>{photoUpload}</div>{errors.photo&&!photoId&&<p className="field-error" role="alert">{errors.photo}</p>}<small>PNG, JPG o WebP · Máximo 5 MB.</small></div></div></div>
+      <IneIdentityCapture value={identity} onChange={next=>{setIdentity(next);if(identityRequired)setIdentityErrors(ineIdentityErrors(next))}} documentId={documentId} onUploadDocument={onUploadDocument} onDocumentAttached={onDocumentAttached} confirmed={identityConfirmed} onConfirmed={next=>{setIdentityConfirmed(next);if(next)setConfirmationError('')}} errors={identityErrors} documentError={errors.document&&!documentId?errors.document:undefined} confirmationError={confirmationError} showRequired={identityRequired}/>
+      <button className="primary provider-application-submit" disabled={busy} type="submit">{busy?'Enviando…':'Enviar registro'} <ArrowRight size={18}/></button></form></section>}
   </div>;
 }
 
