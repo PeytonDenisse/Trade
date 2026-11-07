@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {MongoClient} from 'mongodb';
-import {MongoMemoryServer} from 'mongodb-memory-server';
+import {MongoMemoryReplSet} from 'mongodb-memory-server';
 import {readFileSync} from 'node:fs';
 import {ensureCollections} from '../db/collections';
 import {handle} from '../lib/api';
@@ -9,13 +9,124 @@ import {price,stars,date} from '../lib/rules';
 import {validateIneIdentity,ineIdentityErrors} from '../lib/ine-identity';
 import {preparePresentation,presentationIds} from '../lib/presentation-data';
 import {serviceLocation,directionsUrl} from '../lib/service-location';
-async function fixture(){const server=await MongoMemoryServer.create();const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
+import {identityKeys,INE_ANALYSIS_VERSION} from '../lib/ine-analysis';
+import {processProviderReview} from '../lib/provider-review-jobs';
+async function fixture(){const server=await MongoMemoryReplSet.create({replSet:{count:1}});const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
 const records:any[]=[];
 async function request(env:any,path:string,data?:any,cookie='',expected=200,extra:any={}){const headers:any={...extra};if(cookie)headers.cookie=cookie;let body:any;if(data instanceof FormData)body=data;else if(data!==undefined){body=JSON.stringify(data);headers['content-type']='application/json'}const r=await handle(new Request('https://trade.test/api/'+path,{method:data===undefined?'GET':'POST',headers,body}),env);const result=await r.json();assert.equal(r.status,expected,`${path}: ${JSON.stringify(result)}`);return {data:result as any,cookie:r.headers.get('set-cookie')?.split(';')[0]||cookie}}
 const credentials=(name:string)=>({name,email:name+'@example.test',password:'Test-password-unique-42'});
 const png=readFileSync('public/demo-assets/antes.png');
 // Structurally valid synthetic data. It is not a real identity or document.
 const identity={nombres:'LUIS',apellidoPaterno:'GOMEZ',apellidoMaterno:'LOPEZ',fechaNacimiento:'1990-01-01',sexo:'H',curp:'GOML900101HDFRRN09',calleNumero:'Calle Ficticia 10',colonia:'Centro',codigoPostal:'00100',municipio:'Ciudad de México',estado:'Ciudad de México',vigencia:'2020-2030'};
+
+test('Prueba al enviar: interruptor, cola confiable, fallos, concurrencia y regreso a revisión habitual',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ // Atlas rejects $in on collection names although the temporary server accepts
+ // it. Keep this adapter as a regression check for enabling the real feature.
+ const listCollections=db.listCollections.bind(db);
+ db.listCollections=((filter:any,options:any)=>{if(filter?.name&&typeof filter.name!=='string')throw Error('Atlas only accepts a literal collection name here');return listCollections(filter,options)}) as typeof db.listCollections;
+ const messages:{job:string}[]=[],automaticEnv={...env,PROVIDER_REVIEW_QUEUE:{send:async(message:{job:string})=>{messages.push(message)}}};
+ const admin=await request(env,'register',credentials('admin-background'));
+ const adminId=(await request(env,'me',undefined,admin.cookie)).data.user.id;
+ await db.collection('users').updateOne({id:adminId},{$set:{role:'admin'}});
+ await request(env,'admin/settings',{providerAutomaticReview:true},admin.cookie,503);
+ async function applicant(name:string,curp:string,runtime:any=automaticEnv){
+  const session=await request(runtime,'register',credentials(name));const uid=(await request(runtime,'me',undefined,session.cookie)).data.user.id;
+  const photo=(await upload(runtime,session.cookie,'photo')).data.id,document=(await upload(runtime,session.cookie,'document')).data.id;
+  const declared={...identity,curp};
+  await request(runtime,'apply',{trades:['Plomería'],experience:'Prueba',zone:'Zona ficticia',description:'Prueba',photo,document,identity:declared,analysis:{outcome:'approved'},job:{state:'finished'}},session.cookie,201);
+  return {session,uid,document,declared,job:messages.at(-1)?.job};
+ }
+ const manual=await applicant('modo-original','GOML900101HDFRRN09');assert.equal(messages.length,0);
+ assert.equal((await db.collection('providers').findOne({id:manual.uid}))?.status,'Pendiente');
+ await request(automaticEnv,'admin/settings',{providerAutomaticReview:true},manual.session.cookie,403);
+ await request(automaticEnv,'admin/settings',{providerAutomaticReview:true},admin.cookie);
+ const clear=await applicant('automatico-claro','GOML900101HDFRRM09');
+ assert.deepEqual(Object.keys(messages.at(-1)!),['job']);
+ assert.equal((await request(env,'me',undefined,clear.session.cookie)).data.application.automaticReview.state,'queued');
+ const proof=(values:any,confidence=96)=>({original:{values,confidence:Object.fromEntries(identityKeys.map(k=>[k,confidence]))},processed:{values,confidence:Object.fromEntries(identityKeys.map(k=>[k,confidence]))},warnings:[]});
+ const accepted=await processProviderReview(db,clear.job!,async file=>{assert.ok(file.bytes.length);return proof(clear.declared,75)});
+ assert.equal(accepted.approved,true);assert.equal((await db.collection('users').findOne({id:clear.uid}))?.role,'proveedor');
+ assert.equal((await db.collection('audit_log').findOne({target:clear.uid,action:'provider.approve'}))?.actor,'system:provider-review');
+ assert.equal((await processProviderReview(db,clear.job!,async()=>{throw Error('No debe repetir')})).state,'ignored');
+ const uncertain=await applicant('automatico-dudoso','GOML900101HDFRRL09');
+ assert.equal((await processProviderReview(db,uncertain.job!,async()=>proof(uncertain.declared,74))).approved,false);
+ assert.equal((await db.collection('providers').findOne({id:uncertain.uid}))?.status,'Pendiente');
+ const replacement=(await upload(env,uncertain.session.cookie,'document')).data.id;
+ const before=messages.length;
+ await request(automaticEnv,'provider/identity-correction',{previousDocument:uncertain.document,document:replacement,identity:uncertain.declared},uncertain.session.cookie);
+ assert.equal(messages.length,before+1);
+ const paused=await applicant('automatico-pausado','GOML900101HDFRRK09');
+ let release!:(value:any)=>void;let entered!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve});
+ const pending=processProviderReview(db,paused.job!,()=>{entered();return new Promise(resolve=>{release=resolve})});await started;
+ assert.equal((await processProviderReview(db,paused.job!,async()=>{throw Error('Otro motor no debe leer')})).state,'busy');
+ await request(automaticEnv,'admin/settings',{providerAutomaticReview:false},admin.cookie);
+ release(proof(paused.declared));assert.equal((await pending).state,'cancelled');
+ assert.equal((await db.collection('providers').findOne({id:paused.uid}))?.status,'Pendiente');
+ assert.equal((await db.collection('users').findOne({id:paused.uid}))?.role,'cliente');
+ await request(env,'approve',{id:paused.uid},admin.cookie);
+ assert.equal((await db.collection('providers').findOne({id:paused.uid}))?.status,'Aprobada');
+ await request(automaticEnv,'admin/settings',{providerAutomaticReview:true},admin.cookie);
+ const failed=await applicant('automatico-fallo','GOML900101HDFRRJ09');
+ for(let attempt=0;attempt<3;attempt++)await processProviderReview(db,failed.job!,async()=>{throw Error('Carga simulada fallida')});
+ const saved=await db.collection('providers').findOne({id:failed.uid});assert.equal(saved?.status,'Pendiente');assert.equal(saved?.analysis.outcome,'review');
+ const brokenQueue={...env,PROVIDER_REVIEW_QUEUE:{send:async()=>{throw Error('Cola no disponible')}}};
+ const unsent=await applicant('automatico-sin-cola','GOML900101HDFRRH09',brokenQueue);
+ assert.equal((await request(env,'me',undefined,unsent.session.cookie)).data.application.automaticReview.state,'manual');
+ const transaction=await applicant('automatico-transaccion','GOML900101HDFRRG09');
+ await db.command({collMod:'audit_log',validator:{$jsonSchema:{bsonType:'object',required:['forced_failure']}}});
+ assert.equal((await processProviderReview(db,transaction.job!,async()=>proof(transaction.declared))).state,'retry');
+ assert.equal((await db.collection('providers').findOne({id:transaction.uid}))?.status,'Pendiente');
+ assert.equal((await db.collection('users').findOne({id:transaction.uid}))?.role,'cliente');
+ assert.equal((await db.collection('provider_review_jobs').findOne({_id:transaction.job! as any}))?.state,'queued');
+ assert.equal(await db.collection('audit_log').countDocuments({target:clear.uid,action:'provider.approve'}),1);
+});
+
+test('Revisión automática: permisos, evidencia, idempotencia, carreras y transacción completa',async(t)=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const admin=await request(env,'register',credentials('admin-analisis'));
+ const adminId=(await request(env,'me',undefined,admin.cookie)).data.user.id;
+ await db.collection('users').updateOne({id:adminId},{$set:{role:'admin'}});
+ async function applicant(name:string,curp:string){
+  const session=await request(env,'register',credentials(name));
+  const id=(await request(env,'me',undefined,session.cookie)).data.user.id;
+  const photo=(await upload(env,session.cookie,'photo')).data.id,document=(await upload(env,session.cookie,'document')).data.id;
+  const declared={...identity,curp};
+  await request(env,'apply',{trades:['Plomería'],experience:'Experiencia de prueba',zone:'León',description:'Prueba sintética',photo,document,identity:declared,analysis:{outcome:'approved'}},session.cookie,201);
+  const reading={values:declared,confidence:Object.fromEntries(identityKeys.map(k=>[k,96]))};
+  return {session,id,document,payload:{id,document,runId:crypto.randomUUID(),evidence:{original:reading,processed:reading,warnings:[]}}};
+ }
+ const a=await applicant('proveedor-auto','GOML900101HDFRRN09');
+ assert.equal((await db.collection('providers').findOne({id:a.id}))?.analysis,undefined);
+ await request(env,'admin/provider-analysis',a.payload,a.session.cookie,403);
+ await request(env,'admin/provider-analysis',{...a.payload,document:'documento-anterior'},admin.cookie,409);
+ const result=(await request(env,'admin/provider-analysis',a.payload,admin.cookie)).data;
+ assert.equal(result.approved,true);assert.equal(result.analysis.version,INE_ANALYSIS_VERSION);
+ assert.equal((await request(env,'me',undefined,a.session.cookie)).data.user.role,'proveedor');
+ await request(env,'admin/provider-analysis',a.payload,admin.cookie);
+ assert.equal(await db.collection('audit_log').countDocuments({target:a.id,action:'provider.approve'}),1);
+ const profile=(await request(env,'providers/'+a.id)).data;assert.equal(profile.analysis,undefined);assert.equal(profile.identity,undefined);
+ const publicList=(await request(env,'providers')).data;assert.ok(publicList.every((p:any)=>p.analysis===undefined&&p.analysis_eligible===undefined));
+ const duplicate=await applicant('proveedor-duplicado','GOML900101HDFRRN09');
+ const review=(await request(env,'admin/provider-analysis',duplicate.payload,admin.cookie)).data;
+ assert.equal(review.approved,false);assert.ok(review.analysis.reasons.some((r:string)=>r.includes('misma CURP')));
+ assert.equal((await db.collection('providers').findOne({id:duplicate.id}))?.status,'Pendiente');
+ const replacement=(await upload(env,duplicate.session.cookie,'document')).data.id;
+ await request(env,'provider/identity-correction',{previousDocument:duplicate.document,document:replacement,identity:{...identity,curp:'GOML900101HDFRRK09'}},duplicate.session.cookie);
+ const corrected=await db.collection('providers').findOne({id:duplicate.id});assert.equal(corrected?.analysis,undefined);assert.equal(corrected?.status,'Pendiente');assert.deepEqual(corrected?.trades,['Plomería']);
+ await request(env,'admin/provider-analysis',{...duplicate.payload,runId:crypto.randomUUID()},admin.cookie,409);
+ const raced=await applicant('proveedor-carrera','GOML900101HDFRRM09');
+ const post=(path:string,data:any)=>handle(new Request('https://trade.test/api/'+path,{method:'POST',headers:{cookie:admin.cookie,'content-type':'application/json'},body:JSON.stringify(data)}),env);
+ const responses=await Promise.all([post('approve',{id:raced.id}),post('admin/provider-analysis',raced.payload)]);
+ assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
+ assert.equal(await db.collection('audit_log').countDocuments({target:raced.id,action:'provider.approve'}),1);
+ const rollback=await applicant('proveedor-rollback','GOML900101HDFRRL09');
+ await db.command({collMod:'audit_log',validator:{$jsonSchema:{bsonType:'object',required:['forced_failure']}}});
+ await request(env,'approve',{id:rollback.id},admin.cookie,400);
+ assert.equal((await db.collection('providers').findOne({id:rollback.id}))?.status,'Pendiente');
+ assert.equal((await db.collection('users').findOne({id:rollback.id}))?.role,'cliente');
+ assert.equal(await db.collection('audit_log').countDocuments({target:rollback.id}),0);
+});
 
 test('Datos privados de INE: validación estructural y exclusión de campos ajenos',()=>{
  const normalized=validateIneIdentity({...identity,curp:' goml 900101 hdfr rn09 '});

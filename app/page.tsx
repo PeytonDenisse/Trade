@@ -80,6 +80,15 @@ const [resetToken,setResetToken]=useState('');
 const [tradeNames,setTradeNames]=useState<string[]>(trades);
 const [signupOpen,setSignupOpen]=useState(true);
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
+useEffect(()=>{
+ if(!['queued','processing'].includes(application?.automaticReview?.state))return;
+ const controller=new AbortController();let running=false;
+ const timer=setInterval(async()=>{
+  if(running||window.document.hidden)return;running=true;
+  try{const data=await api('me',undefined,{signal:controller.signal});if(!controller.signal.aborted){setUser(data.user);setApplication(data.application)}}catch{}finally{running=false}
+ },5000);
+ return()=>{clearInterval(timer);controller.abort()};
+},[application?.automaticReview?.state]);
 // The provider's own trade can't be requested; an empty trade means the client chooses.
 function startRequest(trade='',target:{id:string;name:string;trades:string[]}|null=null){setRequestTrade(trade);setRequestTarget(target);if(user)go('create');else{setAuthDestination('create');go('login')}}
 const ownTrades=application&&application.status!=='Rechazada'?tradesOf(application):[];
@@ -191,6 +200,7 @@ return <TradesContext.Provider value={tradeNames}><div className="shell public-s
   onDocumentAttached={setDocument}
   onLogin={()=>{setAuthDestination('apply');go('login')}}
   onOpportunities={()=>go('available')}
+  onIdentityCorrected={async()=>{await me();toast('Correcciones enviadas para una nueva revisión.')}}
   onSubmit={async values=>{await api('apply',{...values,photo,document});await me();toast('Tu registro como proveedor quedó pendiente de revisión.')}}
 />}
 {page==='create'&&<CreateRequestPage key={requestTrade+(requestTarget?.id||'')} initialTrade={ownTrades.includes(requestTrade)?'':requestTrade} excludeTrades={ownTrades} target={requestTarget} onClearTarget={()=>setRequestTarget(null)} onSubmit={async(values)=>{const r=await api('requests',{...values,...(requestTarget?{provider:requestTarget.id}:{})});setRequestTarget(null);go('mine');setJustPublishedId(r.id);await detail(r.id)}}/>}

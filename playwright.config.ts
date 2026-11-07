@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'./tests/browser',timeout:240000,workers:1,fullyParallel:false,use:{baseURL:'http://127.0.0.1:5193',headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||undefined,launchOptions:{args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']},trace:'retain-on-failure'},webServer:{command:'node scripts/serve-ocr-tests.mjs',url:'http://127.0.0.1:5193/tests/browser/harness.html',reuseExistingServer:false,timeout:120000}});

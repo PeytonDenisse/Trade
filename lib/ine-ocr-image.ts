@@ -1,5 +1,6 @@
+import {fieldConfidences} from './ine-confidence';
 import type {Block,Worker} from 'tesseract.js';
-import {extractIneCandidates,type IneOcrResult} from './ine-ocr-parse';
+import {extractIneCandidates,extractIneZoneCandidates,parseIneLocality,type IneOcrResult} from './ine-ocr-parse';
 import type {IneIdentity} from './ine-identity';
 
 type Region={left:number;top:number;width:number;height:number};
@@ -9,15 +10,7 @@ type Word={text:string;confidence:number;bbox:Box};
 type Anchor={box:Box;confidence:number};
 
 // INE's published catalogue of entity abbreviations. Unknown tokens stay pending.
-const stateByAbbreviation:Record<string,string>={
-  AGS:'Aguascalientes',BC:'Baja California',BCS:'Baja California Sur',CAMP:'Campeche',
-  COAH:'Coahuila',COL:'Colima',CHIS:'Chiapas',CHIH:'Chihuahua',CDMX:'Ciudad de México',
-  DGO:'Durango',GTO:'Guanajuato',GRO:'Guerrero',HGO:'Hidalgo',JAL:'Jalisco',
-  MEX:'Estado de México',MICH:'Michoacán',MOR:'Morelos',NAY:'Nayarit',NL:'Nuevo León',
-  OAX:'Oaxaca',PUE:'Puebla',QRO:'Querétaro',QROO:'Quintana Roo',SLP:'San Luis Potosí',
-  SIN:'Sinaloa',SON:'Sonora',TAB:'Tabasco',TAMPS:'Tamaulipas',TLAX:'Tlaxcala',
-  VER:'Veracruz',YUC:'Yucatán',ZAC:'Zacatecas',
-};
+
 
 // The existing labeled fallback also covers scans without word coordinates.
 const fallbackRegions:Scan[]=[
@@ -30,6 +23,10 @@ const labels:Partial<Record<keyof IneIdentity,string[]>>={
   nombres:['NOMBRE'],sexo:['SEXO','GENERO'],calleNumero:['DOMICILIO'],curp:['CURP'],
   fechaNacimiento:['FECHANACIMIENTO','FECHADENACIMIENTO'],vigencia:['VIGENCIA'],
 };
+function matchesScanLabel(field:keyof IneIdentity,text:string){
+  const compact=fold(text);
+  return Boolean(labels[field]?.includes(compact))||(field==='fechaNacimiento'&&/^FECHA(?:DE)?NACIMI(?:E(?:N(?:T(?:O)?)?)?)?$/.test(compact));
+}
 
 function wordsIn(blocks:Block[]|null|undefined):Word[][]{
   return (blocks||[]).flatMap(block=>block.paragraphs.flatMap(paragraph=>paragraph.lines.map(line=>line.words.map(word=>({text:word.text,confidence:word.confidence,bbox:word.bbox})))));
@@ -39,7 +36,7 @@ function anchorFor(lines:Word[][],field:keyof IneIdentity):Anchor|undefined{
   let best:Anchor|undefined;
   for(const words of lines)for(let i=0;i<words.length;i++)for(let count=1;count<=3&&i+count<=words.length;count++){
     const group=words.slice(i,i+count);
-    if(!expected.includes(fold(group.map(word=>word.text).join('')))||group.some(word=>word.confidence<45))continue;
+    if(!matchesScanLabel(field,group.map(word=>word.text).join(''))||group.some(word=>word.confidence<45))continue;
     if(group.some((word,index)=>index>0&&word.bbox.x0-group[index-1].bbox.x1>2*(word.bbox.y1-word.bbox.y0)))continue;
     const confidence=Math.min(...group.map(word=>word.confidence));
     if(best&&best.confidence>=confidence)continue;
@@ -79,11 +76,14 @@ export function planIneScans(blocks:Block[]|null|undefined,imageWidth:number,ima
     const tight=rowGap<h*.8;
     const secondRowBottom=Math.max(...(rows[1]||[]).map(word=>word.bbox.y1));
     const givenTop=Math.max(secondRowBottom-.3*h,secondRowTop+.85*rowGap);
-    const value=field==='nombres'?region(x0-(tight?.35:.75)*h,givenTop,tight?2.2*w:11.06*h,Math.min(1.6*h,2.1*rowGap),imageWidth,imageHeight)
-      :field==='calleNumero'?region(x0-.3*h,y0+.85*h,13*h,1.25*h,imageWidth,imageHeight)
-      :field==='curp'?region(x0-.18*h,y0+.61*h,5.39*w,.97*h,imageWidth,imageHeight)
-      :field==='fechaNacimiento'?region(x0-.2*h,y0+.72*h,.75*w,.95*h,imageWidth,imageHeight)
-      :region(x0,y0+.88*h,1.8*w,1.4*h,imageWidth,imageHeight);
+    const printedDate=field==='fechaNacimiento'?lines.flat().filter(word=>/^\d{1,2}[/.\-]\d{1,2}[/.\-]\d{4}$/.test(word.text)
+      &&word.bbox.x0>=x0-h&&word.bbox.x1<=x0+10*h&&word.bbox.y0>=y1-h*.1&&word.bbox.y1<=y1+3*h).sort((a,b)=>b.confidence-a.confidence)[0]:undefined;
+    const value=printedDate?region(printedDate.bbox.x0-.25*h,printedDate.bbox.y0-.25*h,printedDate.bbox.x1-printedDate.bbox.x0+.5*h,printedDate.bbox.y1-printedDate.bbox.y0+.5*h,imageWidth,imageHeight)
+      :field==='nombres'?region(x0-(tight?.35:.75)*h,givenTop,tight?2.2*w:11.06*h,Math.min(1.6*h,2.1*rowGap),imageWidth,imageHeight)
+      :field==='calleNumero'?region(x0-.3*h,y1+.08*h,16*h,1.6*h,imageWidth,imageHeight)
+      :field==='curp'?region(x0-.2*h,y1+.08*h,Math.max(5.8*w,18*h),2.8*h,imageWidth,imageHeight)
+      :field==='fechaNacimiento'?region(x0-.2*h,y1+.08*h,10*h,1.8*h,imageWidth,imageHeight)
+      :region(x0,y1+.08*h,1.8*w,2.8*h,imageWidth,imageHeight);
     scans.push({field,label:field==='nombres'?'NOMBRES':field==='calleNumero'?'DOMICILIO':field==='fechaNacimiento'?'FECHA DE NACIMIENTO':field.toUpperCase(),value,scale:field==='nombres'&&!tight?3:1});
   }
   // The date heading can disappear from the full-page pass. Locate and
@@ -95,12 +95,45 @@ export function planIneScans(blocks:Block[]|null|undefined,imageWidth:number,ima
       if(h>=12&&h<imageHeight*.12){
         const x=name.box.x0-.33*nh,y=validity.box.y0;
         scans.push({field:'fechaNacimiento',label:'FECHA DE NACIMIENTO',
-          anchor:region(x,y+.18*h,5*h,.93*h,imageWidth,imageHeight),
-          value:region(x,y+.75*h,3.7*h,.93*h,imageWidth,imageHeight),scale:2});
+          anchor:region(x,y-.2*h,Math.min(13*h,validity.box.x0-x),1.5*h,imageWidth,imageHeight),
+          value:region(x,validity.box.y1+.08*h,10*h,1.8*h,imageWidth,imageHeight),scale:1});
       }
     }
   }
   return scans;
+}
+
+/** Read all address rows together; the single-line street crop omits them. */
+export function planIneAddressBlock(blocks:Block[]|null|undefined,imageWidth:number,imageHeight:number):Region|undefined{
+  const lines=wordsIn(blocks),anchor=anchorFor(lines,'calleNumero');if(!anchor)return;
+  const {x0,y0,y1}=anchor.box,h=y1-y0;if(h<8||h>imageHeight*.12)return;
+  // Stop at the following labeled field, including labels in another OCR block.
+  const next=lines.flat().filter(word=>word.bbox.x0>=x0-h&&word.bbox.x0<x0+20*h
+    &&word.bbox.y0>y1+h*.5&&/^(?:CURP|CLAVE|FECHA|VIGENCIA|SECCION)$/.test(fold(word.text)))
+    .sort((a,b)=>a.bbox.y0-b.bbox.y0)[0];
+  const bottom=Math.min(y0+7*h,next?next.bbox.y0-.2*h:imageHeight);
+  if(bottom<=y1)return;
+  return region(x0-.5*h,y1,Math.min(imageWidth-x0,25*h),bottom-y1,imageWidth,imageHeight);
+}
+
+export function planIneCurpRegion(blocks:Block[]|null|undefined,imageWidth:number,imageHeight:number):Region|undefined{
+  const lines=wordsIn(blocks),anchor=anchorFor(lines,'curp');if(!anchor)return;
+  const {x0,x1,y0,y1}=anchor.box,h=y1-y0;
+  // The neighboring AÑO DE REGISTRO heading can be a single long OCR word.
+  // A value on CURP's own line must look alphanumeric, not merely be long.
+  const token=lines.flat().find(word=>{
+    const text=word.text.toUpperCase().replace(/[^A-Z0-9Ñ&]/g,'');
+    return text.length>=16&&text.length<=22&&(text.match(/\d/g)||[]).length>=4&&/[A-ZÑ&]/.test(text)
+    &&word.bbox.x0>=x1&&word.bbox.x0-x1<22*h&&Math.abs((word.bbox.y0+word.bbox.y1-y0-y1)/2)<h*.8;
+  });
+  if(token)return region(token.bbox.x0-.3*h,token.bbox.y0-.3*h,token.bbox.x1-token.bbox.x0+.6*h,token.bbox.y1-token.bbox.y0+.6*h,imageWidth,imageHeight);
+  const next=['fechaNacimiento','vigencia'].map(field=>anchorFor(lines,field as keyof IneIdentity))
+    .filter((value):value is Anchor=>Boolean(value&&value.box.y0>y1+h)).sort((a,b)=>a.box.y0-b.box.y0)[0];
+  const below=lines.flat().filter(word=>{const text=word.text.toUpperCase().replace(/[^A-Z0-9]/g,'');return text.length>=16&&text.length<=22&&(text.match(/\d/g)||[]).length>=4
+    &&word.bbox.x0>=x0-h&&word.bbox.x1<=x0+22*h&&word.bbox.y0>=y1&&word.bbox.y1<(next?.box.y0??y1+3*h);}).sort((a,b)=>a.bbox.y0-b.bbox.y0||b.confidence-a.confidence)[0];
+  if(below)return region(below.bbox.x0-.25*h,below.bbox.y0-.25*h,below.bbox.x1-below.bbox.x0+.5*h,below.bbox.y1-below.bbox.y0+.5*h,imageWidth,imageHeight);
+  const top=y1+.08*h,bottom=Math.min(y1+2.88*h,next?next.box.y0-.15*h:imageHeight);
+  return region(x0-.2*h,top,Math.max(5.8*(x1-x0),18*h),bottom-top,imageWidth,imageHeight);
 }
 
 /** The first two high-confidence rows under NOMBRE identify the surnames. */
@@ -176,23 +209,25 @@ export function layoutMunicipalityEvidence(blocks:Block[]|null|undefined):{candi
   const lines=wordsIn(blocks),anchor=anchorFor(lines,'calleNumero');
   if(!anchor)return;
   const {x0,y0,y1}=anchor.box,h=y1-y0,words=lines.flat();
-  const prefix=words.find(word=>['COL','COLONIA'].includes(fold(word.text))&&word.confidence>=70
-    &&Math.abs(word.bbox.x0-x0)<h&&word.bbox.y0>y0+1.5*h&&word.bbox.y0<y0+5*h);
-  if(!prefix)return;
-  const third=words.filter(word=>word.confidence>=55&&word.bbox.x0>=x0-h&&word.bbox.x1<x0+12*h
-    &&word.bbox.y0>prefix.bbox.y1-.2*h&&word.bbox.y0<prefix.bbox.y1+2.2*h)
-    .sort((a,b)=>a.bbox.x0-b.bbox.x0);
-  if(third.length<2||third.length>5||third.slice(0,-1).some(word=>word.confidence<80))return;
-  const last=third.at(-1)!;
-  const state=stateByAbbreviation[fold(last.text)];
-  const municipality=third.slice(0,-1).map(word=>word.text.replace(/^[^\p{L}]+|[^\p{L}]+$/gu,'')).join(' ');
-  if(!state||!/^[\p{L}][\p{L} '\-]{2,119}$/u.test(municipality)||third.some(word=>/\d/u.test(word.text)))return;
-  const candidate=extractIneCandidates(`MUNICIPIO: ${municipality}\nESTADO: ${state}`);
-  if(!candidate.values.municipio||!candidate.values.estado)return;
-  return {candidate,folded:fold(third.map(word=>word.text).join(' ')),box:{
-    x0:Math.min(...third.map(word=>word.bbox.x0)),y0:Math.min(...third.map(word=>word.bbox.y0)),
-    x1:Math.max(...third.map(word=>word.bbox.x1)),y1:Math.max(...third.map(word=>word.bbox.y1)),
-  }};
+  const next=words.filter(word=>word.bbox.x0>=x0-h&&word.bbox.x0<x0+25*h&&word.bbox.y0>y1+h*.5
+    &&/^(?:CLAVE|CURP|FECHA|VIGENCIA|SECCION)$/.test(fold(word.text))).sort((a,b)=>a.bbox.y0-b.bbox.y0)[0];
+  const candidates=words.filter(word=>word.confidence>=55&&word.bbox.x0>=x0-h&&word.bbox.x1<x0+25*h
+    &&word.bbox.y0>y1+.5*h&&word.bbox.y0<Math.min(y0+8*h,next?.bbox.y0??Infinity))
+    .sort((a,b)=>a.bbox.y0-b.bbox.y0||a.bbox.x0-b.bbox.x0);
+  const rows:Word[][]=[];
+  for(const word of candidates){
+    const row=rows.find(row=>Math.abs((word.bbox.y0+word.bbox.y1-row[0].bbox.y0-row[0].bbox.y1)/2)<h*.6);
+    if(row)row.push(word);else rows.push([word]);
+  }
+  for(const row of rows){
+    const sorted=row.sort((a,b)=>a.bbox.x0-b.bbox.x0),text=sorted.map(word=>word.text).join(' ');
+    const locality=parseIneLocality(text);if(!locality)continue;
+    const candidate:IneOcrResult={values:locality,status:{municipio:'Revisar',estado:'Revisar'}};
+    return {candidate,folded:fold(text),box:{
+      x0:Math.min(...row.map(word=>word.bbox.x0)),y0:Math.min(...row.map(word=>word.bbox.y0)),
+      x1:Math.max(...row.map(word=>word.bbox.x1)),y1:Math.max(...row.map(word=>word.bbox.y1)),
+    }};
+  }
 }
 
 export function curpMatchesOcrFields(curp:string,date?:string,sex?:string):boolean{
@@ -204,7 +239,7 @@ export function consensusCandidate(candidates:readonly string[]):string|undefine
 }
 
 
-function crop(image:ImageBitmap,area:Region,enhance:boolean|'gray',scale=3):HTMLCanvasElement{
+function crop(image:ImageBitmap,area:Region,enhance:boolean|'gray'|'ink'|'ink-light',scale=3):HTMLCanvasElement{
   const left=Math.max(0,Math.floor(image.width*area.left)),top=Math.max(0,Math.floor(image.height*area.top));
   const width=Math.max(1,Math.min(image.width-left,Math.ceil(image.width*area.width)));
   const height=Math.max(1,Math.min(image.height-top,Math.ceil(image.height*area.height)));
@@ -226,38 +261,76 @@ function crop(image:ImageBitmap,area:Region,enhance:boolean|'gray',scale=3):HTML
       const range=Math.max(1,high-low);
       for(let i=0;i<pixels.data.length;i+=4){const d=pixels.data;const gray=Math.max(0,Math.min(255,Math.round((d[i]*.2126+d[i+1]*.7152+d[i+2]*.0722-low)*255/range)));d[i]=gray;d[i+1]=gray;d[i+2]=gray}
     }else{
-      for(let i=0;i<pixels.data.length;i+=4){const d=pixels.data;const gray=Math.round(d[i]*.2126+d[i+1]*.7152+d[i+2]*.0722);d[i]=gray;d[i+1]=gray;d[i+2]=gray}
+      for(let i=0;i<pixels.data.length;i+=4){const d=pixels.data;const gray=Math.round(d[i]*.2126+d[i+1]*.7152+d[i+2]*.0722);const level=enhance==='ink'||enhance==='ink-light'?(gray<(enhance==='ink'?110:145)?0:255):gray;d[i]=level;d[i+1]=level;d[i+2]=level}
     }
     context.putImageData(pixels,0,0);
   }
   return canvas;
 }
 
+// A missing page label is re-read locally before any field value is accepted.
+// This region only locates headings; it never supplies a value from coordinates alone.
+export async function recoverIneCriticalBlocks(worker:Worker,file:Blob,blocks:Block[]|null|undefined,cancelled:()=>boolean):Promise<Block[]>{
+ const original=blocks||[],lines=wordsIn(original);
+ const existingCurp=anchorFor(lines,'curp'),existingBirth=anchorFor(lines,'fechaNacimiento');
+ if(existingCurp&&existingBirth)return original;
+ const image=await createImageBitmap(file);
+ try{
+  if(image.width<600||image.height<600)return original;
+  const {PSM}=await import('tesseract.js');
+  const area={left:.28,top:.68,width:.38,height:.30},scale=2;
+  const left=Math.floor(image.width*area.left),top=Math.floor(image.height*area.top);
+  const recovered:Block[]=[...original];
+  for(const enhance of ['ink'] as const){
+   if(cancelled())break;
+   await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT,tessedit_char_whitelist:''});
+   const data=(await worker.recognize(crop(image,area,enhance,scale),{}, {blocks:true})).data;
+   if(cancelled())break;
+   for(const block of data.blocks||[])recovered.push({...block,paragraphs:block.paragraphs.map(paragraph=>({...paragraph,lines:paragraph.lines.map(line=>({...line,words:line.words.filter(word=>!(existingCurp&&fold(word.text)==='CURP')&&!(existingBirth&&/^(?:FECHA|NACIMI|FECHADENACIMI)/.test(fold(word.text)))).map(word=>({...word,bbox:{x0:left+word.bbox.x0/scale,y0:top+word.bbox.y0/scale,x1:left+word.bbox.x1/scale,y1:top+word.bbox.y1/scale}}))}))}))});
+   // Keep existing page headings; only recover the missing anchors.
+  }
+  return recovered;
+ }finally{image.close()}
+}
+
 export async function supplementIneScan(worker:Worker,file:File,base:IneOcrResult,cancelled:()=>boolean,blocks?:Block[]|null):Promise<IneOcrResult>{
   if(typeof createImageBitmap!=='function')return base;
   const {PSM}=await import('tesseract.js');
-  const merged:IneOcrResult={values:{...base.values},status:{...base.status}};
+  const merged:IneOcrResult={values:{...base.values},status:{...base.status},confidence:{...fieldConfidences(base.values,blocks),...base.confidence}};
   const image=await createImageBitmap(file);
   try{
     if(image.width<600||image.height<600)return merged;
+    const addressBlock=planIneAddressBlock(blocks,image.width,image.height);
+    if(addressBlock&&['calleNumero','colonia','codigoPostal','municipio','estado'].some(field=>!merged.values[field as keyof IneIdentity])){
+      await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_BLOCK});
+      const first=(await worker.recognize(crop(image,addressBlock,false,2))).data;
+      if(cancelled())return merged;
+      const second=(await worker.recognize(crop(image,addressBlock,'gray',2))).data;
+      if(cancelled())return merged;
+      const found=first.confidence>=25&&second.confidence>=25?extractIneZoneCandidates('domicilio',first.text,second.text):{values:{},status:{}} as IneOcrResult;
+      for(const field of ['calleNumero','colonia','codigoPostal','municipio','estado'] as const)if(!merged.values[field]&&found.values[field]){
+        merged.values[field]=found.values[field];merged.status[field]='Revisar';
+      }
+    }
     const names=layoutNameCandidates(blocks);
     for(const field of ['apellidoPaterno','apellidoMaterno'] as const)if(!merged.values[field]&&names.values[field]){merged.values[field]=names.values[field];merged.status[field]='Revisar'}
     const gender=layoutGenderCandidate(blocks);
     if(!merged.values.sexo&&gender.values.sexo){merged.values.sexo=gender.values.sexo;merged.status.sexo='Revisar'}
     const address=layoutAddressCandidates(blocks);
     for(const field of ['colonia','codigoPostal'] as const)if(!merged.values[field]&&address.values[field]){merged.values[field]=address.values[field];merged.status[field]='Revisar'}
-    const municipality=address.values.colonia&&address.values.codigoPostal?layoutMunicipalityEvidence(blocks):undefined;
+    const municipality=layoutMunicipalityEvidence(blocks);
     if(municipality&&(!merged.values.municipio||!merged.values.estado)){
       const h=municipality.box.y1-municipality.box.y0;
       const area=region(municipality.box.x0-.3*h,municipality.box.y0-.25*h,
         municipality.box.x1-municipality.box.x0+.6*h,1.5*h,image.width,image.height);
       await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_LINE});
-      const raw=(await worker.recognize(crop(image,area,false,2))).data;
+      const raw=(await worker.recognize(crop(image,area,false,1))).data;
       if(cancelled())return merged;
-      const gray=(await worker.recognize(crop(image,area,'gray',2))).data;
+      const gray=(await worker.recognize(crop(image,area,'gray',1))).data;
       if(cancelled())return merged;
-      if(raw.confidence>=55&&gray.confidence>=55&&fold(raw.text)===municipality.folded
-        &&fold(gray.text)===municipality.folded){
+      const firstLocality=parseIneLocality(raw.text.trim()),secondLocality=parseIneLocality(gray.text.trim());
+      const same=(value:ReturnType<typeof parseIneLocality>)=>value&&value.municipio.toUpperCase()===municipality.candidate.values.municipio?.toUpperCase()&&value.estado===municipality.candidate.values.estado;
+      if(raw.confidence>=55&&gray.confidence>=55&&same(firstLocality)&&same(secondLocality)){
         for(const field of ['municipio','estado'] as const)if(!merged.values[field]&&municipality.candidate.values[field]){
           merged.values[field]=municipality.candidate.values[field];merged.status[field]='Revisar';
         }
@@ -270,21 +343,22 @@ export async function supplementIneScan(worker:Worker,file:File,base:IneOcrResul
         await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_BLOCK});
         const anchorText=(await worker.recognize(crop(image,anchor,false,2))).data.text;
         if(cancelled())break;
-        if(!fold(anchorText).includes(fold(label))){
+        const foundLabel=(text:string)=>field==='fechaNacimiento'?/FECHA(?:DE)?NACIMI(?:E(?:N(?:T(?:O)?)?)?)?/.test(fold(text)):fold(text).includes(fold(label));
+        if(!foundLabel(anchorText)){
           const enhanced=(await worker.recognize(crop(image,anchor,true))).data.text;
           if(cancelled())break;
-          if(!fold(enhanced).includes(fold(label)))continue;
+          if(!foundLabel(enhanced))continue;
         }
       }
       await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_LINE});
-      const recognized=(await worker.recognize(crop(image,value,field==='curp'?'gray':false,scale))).data;
+      const recognized=(await worker.recognize(crop(image,value,field==='curp'?'gray':false,scale),{}, {blocks:true})).data;
       if(cancelled())break;
       if(field==='curp'){
         const narrower=region(value.left*image.width,value.top*image.height,value.width*image.width-value.height*image.height*.015,value.height*image.height*.985,image.width,image.height);
         const widened=region(value.left*image.width,value.top*image.height-value.height*image.height*.14,value.width*image.width+value.height*image.height*.14,value.height*image.height*1.21,image.width,image.height);
         const readings=[recognized];
         for(const area of [narrower,widened]){
-          readings.push((await worker.recognize(crop(image,area,'gray',scale))).data);
+          readings.push((await worker.recognize(crop(image,area,'gray',scale),{}, {blocks:true})).data);
           if(cancelled())break;
         }
         if(cancelled())break;
@@ -300,8 +374,13 @@ export async function supplementIneScan(worker:Worker,file:File,base:IneOcrResul
         const areas=field==='nombres'?[value,shifted(-.03)]
           :field==='fechaNacimiento'?[value,shifted(-.03),shifted(.03)]:[value];
         for(const [index,area] of areas.entries()){
-          if(index)readings.push((await worker.recognize(crop(image,area,false,scale))).data);
-          readings.push((await worker.recognize(crop(image,area,'gray',scale))).data);
+          if(index)readings.push((await worker.recognize(crop(image,area,false,scale),{}, {blocks:true})).data);
+          readings.push((await worker.recognize(crop(image,area,'gray',scale),{}, {blocks:true})).data);
+          if(cancelled())break;
+        }
+        if(cancelled())break;
+        if(field==='fechaNacimiento'&&!consensusCandidate(readings.filter(reading=>reading.confidence>=25).map(reading=>extractIneCandidates(`${label}\n${reading.text}`).values[field]).filter((value):value is string=>Boolean(value))))for(const enhance of ['ink','ink-light'] as const){
+          readings.push((await worker.recognize(crop(image,value,enhance,scale),{}, {blocks:true})).data);
           if(cancelled())break;
         }
         if(cancelled())break;
@@ -312,6 +391,10 @@ export async function supplementIneScan(worker:Worker,file:File,base:IneOcrResul
         if(agreed){
           Object.assign(merged.values,{[field]:agreed});
           merged.status[field]='Revisar';
+          const measured=readings.filter(reading=>extractIneCandidates(`${label}\n${reading.text}`).values[field]===agreed)
+            .map(reading=>fieldConfidences({[field]:agreed},reading.blocks)[field]||0).sort((a,b)=>b-a);
+          // Require two matching measurements; a weaker extra crop does not erase them.
+          merged.confidence![field]=measured.length>=2?measured[1]:0;
         }
         continue;
       }

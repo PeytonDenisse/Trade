@@ -52,9 +52,15 @@ next-env.d.ts
 /.wrangler/
 # Checkout-local execution profile and tool state; never publish them.
 /.sites-runtime/
+/workers/.sites-runtime/
+/workers/.wrangler/
 /.agents/
 /.codex/
 /outputs/
 /work/
 .test-output/
 *.tsbuildinfo
+/public/ocr/opencv.js
+/public/ocr/opencv.LICENSE
+/test-results/
+/playwright-report/

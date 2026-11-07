@@ -1,10 +1,11 @@
 // Shared admin types and labels.
-export type Api=(path:string,data?:any)=>Promise<any>;
+export type Api=(path:string,data?:any,options?:{signal?:AbortSignal})=>Promise<any>;
 
 export const roleLabel:Record<string,string>={cliente:'Cliente',proveedor:'Proveedor',admin:'Administrador'};
 
 // audit_log action codes as people read them.
 export const actionLabel:Record<string,string>={
+  'provider.analysis-review':'Analizó el documento: requiere revisión',
   'provider.approve':'Aprobó el registro de proveedor',
   'provider.reject':'Rechazó el registro de proveedor',
   'provider.activate':'Reactivó el perfil de proveedor',

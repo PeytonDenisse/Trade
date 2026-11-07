@@ -3,7 +3,7 @@ import {useEffect,useState,type FormEvent} from 'react';
 import {useToast} from '../feedback/feedback-provider';
 import {errorText,type Api} from './shared';
 
-type Settings={registrationOpen:boolean;providerApplicationsOpen:boolean;requestExpiryDays:number;maxOpenRequests:number};
+type Settings={registrationOpen:boolean;providerApplicationsOpen:boolean;requestExpiryDays:number;maxOpenRequests:number;providerAutomaticReview:boolean};
 
 // Ajustes: platform rules the API enforces.
 export function SettingsAdmin({api}:{api:Api}){
@@ -17,12 +17,13 @@ export function SettingsAdmin({api}:{api:Api}){
     e.preventDefault();setBusy(true);
     try{const next=await api('admin/settings',changed);setSaved(next);setForm(next);toast('Ajustes guardados.')}catch(cause){toast(errorText(cause),'error')}finally{setBusy(false)}
   }
-  const toggle=(key:'registrationOpen'|'providerApplicationsOpen',label:string,help:string)=><label className="setting-toggle"><input type="checkbox" checked={form[key]} onChange={e=>setForm({...form,[key]:e.target.checked})}/><span><strong>{label}</strong><small>{help}</small></span></label>;
+  const toggle=(key:'registrationOpen'|'providerApplicationsOpen'|'providerAutomaticReview',label:string,help:string)=><label className="setting-toggle"><input type="checkbox" checked={form[key]===true} onChange={e=>setForm({...form,[key]:e.target.checked})}/><span><strong>{label}</strong><small>{help}</small></span></label>;
   const number=(key:'requestExpiryDays'|'maxOpenRequests',label:string,help:string,min:number,max:number)=><label className="settings-field setting-number">{label}<input type="number" min={min} max={max} value={form[key]} onChange={e=>setForm({...form,[key]:Number(e.target.value)})}/><small>{help}</small></label>;
   return <form className="settings-admin" onSubmit={save}>
     <section className="settings-card"><h2>Registro</h2>
       {toggle('registrationOpen','Permitir cuentas nuevas','Si lo apagas, nadie puede crear una cuenta; quienes ya tienen una siguen entrando.')}
       {toggle('providerApplicationsOpen','Recibir registros de proveedores','Si lo apagas, nadie puede enviar un registro de proveedor nuevo.')}
+      {toggle('providerAutomaticReview','Revisar automáticamente al enviar','Analiza los nuevos registros sin iniciar la revisión en administración. Apágalo para volver a la revisión habitual; las decisiones ya guardadas se conservan.')}
     </section>
     <section className="settings-card"><h2>Solicitudes</h2>
       {number('requestExpiryDays','Días para que venza una solicitud sin respuesta','Una solicitud activa sin propuesta aceptada pasa a «Vencida» después de estos días.',1,365)}

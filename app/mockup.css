@@ -1,4 +1,15 @@
 /* Layout based on the approved desktop/mobile screens in design/mockups. */
+.automatic-ine-review,.ine-image-editor,.ine-analysis-summary { margin: 18px 0; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: #fffaf6; }
+.automatic-ine-review p,.ine-image-editor p,.ine-analysis-summary li { font-size: 14px; line-height: 1.6; }
+.ine-crop-preview { position: relative; width: min(100%,700px); margin: 16px auto; line-height: 0; }
+.ine-crop-preview canvas { width: 100%; height: auto; }
+.ine-crop-box { position: absolute; border: 3px solid #d96647; box-shadow: 0 0 0 100vmax #0005; clip-path: inset(-100vmax); pointer-events: none; }
+.ine-crop-preview { overflow: hidden; }
+.ine-crop-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 18px 0; }
+.ine-crop-controls label { display: grid; font-size: 13px; gap: 8px; }
+.ine-crop-controls input { width: 100%; }
+.ine-analysis-table { overflow: auto; margin-top: 14px; }
+.ine-analysis-table th,.ine-analysis-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border); font-size: 12px; min-width: 130px; overflow-wrap: anywhere; }
 .location-picker,.service-location { margin: 24px 0; padding: 20px; border: 1px solid var(--border); border-radius: 14px; }
 .location-picker h3,.service-location h3 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .location-picker h3 small { font-size: 12px; font-weight: 400; color: var(--muted); }

@@ -43,11 +43,14 @@ export const collections: Record<string, Def> = {
           municipio: str, estado: str, vigencia: str,
         } },
       // Admin decisions: who decided, when, and the reason the person sees.
+      analysis_eligible: bool,
+      analysis: { bsonType: "object", additionalProperties: false, required: ["version","engine","document","runId","at","by","outcome","reasons","fields"], properties: {
+        version: str, engine: str, document: str, runId: str, at: str, by: str, outcome: {enum:["approved","review"]}, reasons:{bsonType:"array",items:str}, fields:{bsonType:"array",items:{bsonType:"object"}} } },
       reason: optStr, decided_by: optStr, decided_at: optStr, deactivated_reason: optStr,
       // Trades added after approval wait here until an admin reviews them.
       pending_trades: { bsonType: ["array", "null"], items: str } },
-    optional: ["identity", "reason", "decided_by", "decided_at", "deactivated_reason", "pending_trades"],
-    index: [{ trade: 1, status: 1 }, { trades: 1 }],
+    optional: ["identity", "analysis", "analysis_eligible", "reason", "decided_by", "decided_at", "deactivated_reason", "pending_trades"],
+    index: [{ trade: 1, status: 1 }, { trades: 1 }, { 'identity.curp': 1 }],
   },
   requests: {
     key: "id",
@@ -85,9 +88,10 @@ export const collections: Record<string, Def> = {
   settings: {
     key: "key",
     // One document (key "app") with the platform settings administration can change.
-    fields: { key: str, registrationOpen: bool, providerApplicationsOpen: bool, requestExpiryDays: num, maxOpenRequests: num, updated_at: optStr, updated_by: optStr },
-    optional: ["registrationOpen", "providerApplicationsOpen", "requestExpiryDays", "maxOpenRequests", "updated_at", "updated_by"],
+    fields: { key: str, registrationOpen: bool, providerApplicationsOpen: bool, requestExpiryDays: num, maxOpenRequests: num, updated_at: optStr, updated_by: optStr,providerAutomaticReview:bool,providerReviewGeneration:num,providerReviewFence:num },
+    optional: ["registrationOpen", "providerApplicationsOpen", "requestExpiryDays", "maxOpenRequests", "updated_at", "updated_by","providerAutomaticReview","providerReviewGeneration","providerReviewFence"],
   },
+  provider_review_jobs:{key:'_id',fields:{_id:str,provider:str,document:str,generation:num,state:{enum:['queued','processing','finished','manual','cancelled']},created:str,attempts:num,lease:str,lease_until:num,outcome:str},optional:['lease','lease_until','outcome'],index:[{provider:1,document:1},{state:1,lease_until:1}]},
   audit_log: {
     key: "id",
     // One row per admin action: who did what to whom, and why.
@@ -121,7 +125,7 @@ export async function ensureCollections(db: Db, log: (msg: string) => void = () 
     if (existing.has(name)) await db.command({ collMod: name, validator: validator(def) });
     else await db.createCollection(name, { validator: validator(def) });
     const coll = db.collection(name);
-    await coll.createIndex({ [def.key]: 1 }, { unique: true });
+    if(def.key!=='_id')await coll.createIndex({ [def.key]: 1 }, { unique: true });
     for (const keys of def.unique ?? []) await coll.createIndex(keys, { unique: true });
     for (const keys of def.index ?? []) await coll.createIndex(keys);
     if ("trades" in def.fields) await coll.updateMany({ trades: { $exists: false } }, [{ $set: { trades: ["$trade"] } }]);

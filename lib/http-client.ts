@@ -15,9 +15,9 @@ export async function readApiResponse<T=any>(response:Response):Promise<T>{
   return data as T;
 }
 
-export async function api(path:string,data?:any){
+export async function api(path:string,data?:any,options?:{signal?:AbortSignal}){
   const response=await fetch('/api/'+path,{
-    credentials:'same-origin',cache:'no-store',
+    credentials:'same-origin',cache:'no-store',signal:options?.signal,
     ...(data!==undefined?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{}),
   });
   return readApiResponse(response);

@@ -1,5 +1,7 @@
 # Trade — POC académica
 
+La [revisión automática de INE](docs/revision-automatica-ine.md) explica el OCR local, las reglas de aprobación, la preparación compatible de la base y las pruebas de navegador.
+
 Para presentar el flujo de cliente, proveedor y administración, consulta [el guion paso a paso con cuentas y contraseñas](docs/demo-presentacion.md). Usa **Cuentas de presentación** para seguir un solo servicio desde su creación hasta la reseña.
 
 Aplicación para solicitar servicios de oficios y seguir su contratación hasta la evaluación.
@@ -61,3 +63,6 @@ La configuración y el paso de activación con el secreto `CLOUDFLARE_API_TOKEN`
 - Cotizaciones en MXN, sin cobros. Fechas se validan por día UTC; adaptar zona antes de uso real en límites de medianoche.
 - No hay chat, cancelaciones, edición de perfil ni rechazo de proveedores, porque no forman parte de los criterios suministrados.
 - Las métricas de ahorro de tiempo y confianza requieren investigación con usuarios; no se han medido ni se presentan como resultados.
+## Prueba reversible de aprobación al enviar
+
+Consulta [la prueba local y cómo volver al flujo anterior](docs/prueba-aprobacion-al-enviar.md). `pnpm review:trial` inicia un entorno aislado con datos ficticios; no usa Atlas ni activa servicios de pago.

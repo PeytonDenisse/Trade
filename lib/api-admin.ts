@@ -1,4 +1,5 @@
 import {required} from './rules';
+import {decideProvider} from './provider-decision';
 import type {Ctx} from './api-context';
 import {tradeNames} from './trades-db';
 import {getSettings,settingsUpdate,type Settings} from './settings-db';
@@ -162,6 +163,12 @@ async function tradesPost(x:Ctx,path:string,b:any){
 }
 
 export async function adminPost(x:Ctx,path:string,b:any){
+ if(path==='admin/provider-analysis'){
+  admin(x);
+  const id=x.sid(b.id),document=x.sid(b.document),runId=x.sid(b.runId);
+  if(!id||id.length>100||!document||document.length>150||!/^[-a-zA-Z0-9]{16,100}$/.test(runId))x.fail('Identificadores de análisis inválidos.');
+  return x.json(await decideProvider(x,{id,document,runId,decision:'analysis',evidence:b.evidence}));
+ }
  if(path.startsWith('admin/trade')){admin(x);return tradesPost(x,path,b)}
  // Equipo: give or remove admin rights; never one's own, and at least one admin always remains.
  if(path==='admin/role'){
@@ -214,7 +221,14 @@ export async function adminPost(x:Ctx,path:string,b:any){
  if(path==='admin/settings'){
   admin(x);let update:Partial<Settings>;
   try{update=settingsUpdate(b)}catch(e:any){x.fail(e.message)}
-  await x.c('settings').updateOne({key:'app'},{$set:{...update!,updated_at:new Date().toISOString(),updated_by:x.user.id},$setOnInsert:{key:'app'}},{upsert:true});
+  if(update!.providerAutomaticReview===true&&!x.automaticReviewAvailable)x.fail('La prueba automática todavía no está conectada. Conserva la revisión actual hasta configurar Browser Run y la cola.',503);
+  if(update!.providerAutomaticReview===true){
+   const info=(await Promise.all(['settings','provider_review_jobs'].map(name=>x.db.listCollections({name}).toArray()))).flat();
+   const settingsInfo=info.find(item=>item.name==='settings');
+   const properties=settingsInfo&&'options' in settingsInfo?settingsInfo.options?.validator?.$jsonSchema?.properties:undefined;
+   if(!info.some(item=>item.name==='provider_review_jobs')||!properties?.providerAutomaticReview||!properties?.providerReviewGeneration||!properties?.providerReviewFence)x.fail('Falta preparar la base para la prueba automática. Consulta la guía de activación antes de encenderla.',503);
+  }
+  await x.c('settings').updateOne({key:'app'},{$set:{...update!,updated_at:new Date().toISOString(),updated_by:x.user.id},$setOnInsert:{key:'app'},...(update!.providerAutomaticReview!==undefined?{$inc:{providerReviewGeneration:1}}:{})},{upsert:true});
   await audit(x,'settings.update',null,Object.entries(update!).map(([k,v])=>`${k}: ${v}`).join(', '));
   return x.json(await getSettings(x.db));
  }
@@ -222,17 +236,13 @@ export async function adminPost(x:Ctx,path:string,b:any){
  admin(x);
  const person:any=await x.one('users',{id:x.sid(b.id)},{id:1,name:1,role:1});
  if(!person)x.fail('Usuario no encontrado.',404);
- const decided={decided_by:x.user.id,decided_at:new Date().toISOString()};
  if(path==='approve'){
-  if(!(await x.c('providers').updateOne({id:person.id,status:'Pendiente'},{$set:{status:'Aprobada',reason:null,...decided}})).modifiedCount)x.fail('No hay un registro pendiente.',409);
-  await x.c('users').updateOne({id:person.id,role:{$ne:'admin'}},{$set:{role:'proveedor'}});
-  await audit(x,'provider.approve',person);
+  await decideProvider(x,{id:person.id,decision:'approve'});
  }
  // A rejection always says why; the person sees it on their registration.
  if(path==='reject'){
   const why=required(b.reason,'Motivo del rechazo',300);
-  if(!(await x.c('providers').updateOne({id:person.id,status:'Pendiente'},{$set:{status:'Rechazada',reason:why,...decided}})).modifiedCount)x.fail('No hay un registro pendiente.',409);
-  await audit(x,'provider.reject',person,why);
+  await decideProvider(x,{id:person.id,decision:'reject',reason:why});
  }
  // Accounts and provider profiles switch on or off; never an admin's.
  if(path==='account-active'||path==='provider-active'){
