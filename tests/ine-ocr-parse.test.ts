@@ -429,3 +429,19 @@ test('la fecha inferida exige validar su propia etiqueta junto a vigencia',()=>{
   assert.ok(date.anchor.left<.4);
   assert.ok(date.value.top>date.anchor.top);
 });
+
+
+test('los recortes siguen la fila detectada sin incluir nacimiento ni la columna de seccion',()=>{
+ const blocks=syntheticBlocks([
+  [{text:'CURP',confidence:96,x0:500,y0:710,x1:580,y1:740}],
+  [{text:'GODE561231HDFLRS09',confidence:80,x0:500,y0:755,x1:880,y1:790}],
+  [{text:'FECHA',confidence:95,x0:500,y0:815,x1:590,y1:843},{text:'DE',confidence:96,x0:600,y0:815,x1:630,y1:843},{text:'NACIMIENTO',confidence:95,x0:640,y0:815,x1:810,y1:843}],
+  [{text:'31/12/1956',confidence:94,x0:500,y0:850,x1:660,y1:884},{text:'4094',confidence:95,x0:850,y0:850,x1:925,y1:884}],
+ ]);
+ const curp=planIneCurpRegion(blocks,1500,948)!;
+ assert.ok(curp.left*1500<=500);assert.ok((curp.left+curp.width)*1500>=880);
+ assert.ok(curp.top*948<=755);assert.ok((curp.top+curp.height)*948<815);
+ const birth=planIneScans(blocks,1500,948).find(scan=>scan.field==='fechaNacimiento')!.value;
+ assert.ok(birth.left*1500<=500);assert.ok((birth.left+birth.width)*1500>=660);
+ assert.ok((birth.left+birth.width)*1500<850);assert.ok((birth.top+birth.height)*948>=884);
+});

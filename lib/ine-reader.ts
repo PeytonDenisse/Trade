@@ -1,30 +1,17 @@
 import type {Worker as OcrWorker,Block} from 'tesseract.js';
 import {extractIneCandidates,extractIneZoneCandidates,type IneOcrResult,type IneZone} from './ine-ocr-parse';
-import {supplementIneScan,planIneCurpRegion} from './ine-ocr-image';
-import {identityKeys,normalizeIneValue,type IneEvidence,type IneReading} from './ine-analysis';
+import {supplementIneScan,planIneCurpRegion,recoverIneCriticalBlocks} from './ine-ocr-image';
+import {INE_MIN_CONFIDENCE,identityKeys,normalizeIneValue,type IneEvidence,type IneReading} from './ine-analysis';
 import type {IneIdentity} from './ine-identity';
 import {diagnoseIneReading,type IneReadDiagnostics} from './ine-ocr-diagnostics';
 
-const compact=(value:string)=>normalizeIneValue(value).replace(/[^A-ZÑ0-9]/g,'');
-export function fieldConfidences(values:Partial<IneIdentity>,blocks:Block[]|null|undefined):IneReading['confidence']{
- const words=(blocks||[]).flatMap(b=>b.paragraphs.flatMap(p=>p.lines.flatMap(l=>l.words)));
- const confidence:IneReading['confidence']={};
- for(const field of identityKeys){
-  const value=values[field];if(!value)continue;
-  const aliases=[compact(value)];
-  if(field==='fechaNacimiento'){const [year,month,day]=value.split('-');aliases.push(day+month+year)}
-  let best=0;
-  for(let i=0;i<words.length;i++){
-   let joined='',lowest=100;
-   for(let j=i;j<Math.min(words.length,i+15);j++){
-    joined+=compact(words[j].text);lowest=Math.min(lowest,words[j].confidence);
-    if(aliases.includes(joined))best=Math.max(best,lowest);
-    if(joined.length>Math.max(...aliases.map(a=>a.length)))break;
-   }
-  }
-  confidence[field]=Math.max(0,Math.min(100,best));
- }
- return confidence;
+import {fieldConfidences} from './ine-confidence';
+export {fieldConfidences} from './ine-confidence';
+
+function readingConfidences(result:IneOcrResult,blocks:Block[]|null|undefined){
+ const measured=fieldConfidences(result.values,blocks);
+ for(const field of identityKeys)if(result.confidence?.[field]!==undefined)measured[field]=Math.max(measured[field]||0,result.confidence[field]!);
+ return measured;
 }
 
 export function mergeIneReadings(original:IneReading,processed:IneReading):IneOcrResult{
@@ -39,7 +26,7 @@ export function mergeIneReadings(original:IneReading,processed:IneReading):IneOc
   }
   const value=b||a;if(!value)continue;
   Object.assign(result.values,{[field]:value});
-  result.status[field]=a&&b&&(original.confidence[field]||0)>=85&&(processed.confidence[field]||0)>=85?'Reconocido':'Revisar';
+  result.status[field]=a&&b&&(original.confidence[field]||0)>=INE_MIN_CONFIDENCE&&(processed.confidence[field]||0)>=INE_MIN_CONFIDENCE?'Reconocido':'Revisar';
  }
  return result;
 }
@@ -48,6 +35,12 @@ export function selectFocusedCurp(first:{text:string;confidence:number},second:{
  const value=extractIneZoneCandidates('curp',first.text,second.text).values.curp;
  const confidence=Math.min(first.confidence,second.confidence);
  if(value&&confidence>=25)return {value,confidence};
+}
+
+export function selectBestFocusedCurp(pairs:readonly {value:string;confidence:number}[]){
+ if(!pairs.length)return;
+ const best=pairs.reduce((a,b)=>a.confidence>=b.confidence?a:b);
+ return {...best,confidence:new Set(pairs.map(pair=>pair.value)).size===1?best.confidence:0};
 }
 
 // Re-read the printed CURP as a line, without using the applicant's declaration
@@ -59,6 +52,7 @@ async function focusedCurp(worker:OcrWorker,file:Blob,blocks:Block[]|null|undefi
   const left=Math.floor(area.left*bitmap.width),top=Math.floor(area.top*bitmap.height);
   const width=Math.min(bitmap.width-left,Math.ceil(area.width*bitmap.width)),height=Math.min(bitmap.height-top,Math.ceil(area.height*bitmap.height));
   const {PSM}=await import('tesseract.js');
+  const pairs:{value:string;confidence:number}[]=[];
   for(const scale of [1,2])for(const mode of [PSM.SINGLE_LINE,PSM.RAW_LINE]){
    // RAW_LINE avoids the word segmentation that can merge the final glyph.
    // Its whitelist must remain disabled: Tesseract otherwise reports zero
@@ -70,8 +64,23 @@ async function focusedCurp(worker:OcrWorker,file:Blob,blocks:Block[]|null|undefi
    const pixels=context.getImageData(0,0,canvas.width,canvas.height);
    for(let i=0;i<pixels.data.length;i+=4){const gray=Math.round(.2126*pixels.data[i]+.7152*pixels.data[i+1]+.0722*pixels.data[i+2]);pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=gray}
    context.putImageData(pixels,0,0);const second=(await worker.recognize(canvas)).data;
-   const found=selectFocusedCurp(first,second);if(found)return found;
+   const found=selectFocusedCurp(first,second);if(found)pairs.push(found);
   }
+  if((selectBestFocusedCurp(pairs)?.confidence||0)<INE_MIN_CONFIDENCE){
+   await worker.setParameters({tessedit_pageseg_mode:PSM.RAW_LINE,tessedit_char_whitelist:''});
+   for(const scale of [1,2]){
+    const readings:{text:string;confidence:number}[]=[];
+    for(const threshold of [110,145]){
+     const canvas=document.createElement('canvas');canvas.width=width*scale;canvas.height=height*scale;
+     const context=canvas.getContext('2d',{willReadFrequently:true})!;context.drawImage(bitmap,left,top,width,height,0,0,canvas.width,canvas.height);
+     const pixels=context.getImageData(0,0,canvas.width,canvas.height);
+     for(let i=0;i<pixels.data.length;i+=4){const d=pixels.data;const level=d[i]*.2126+d[i+1]*.7152+d[i+2]*.0722<threshold?0:255;d[i]=d[i+1]=d[i+2]=level}
+     context.putImageData(pixels,0,0);readings.push((await worker.recognize(canvas)).data);
+    }
+    const found=selectFocusedCurp(readings[0],readings[1]);if(found)pairs.push(found);
+   }
+  }
+  return selectBestFocusedCurp(pairs);
  }finally{bitmap.close();await worker.setParameters({tessedit_char_whitelist:''})}
 }
 
@@ -131,19 +140,21 @@ export function createIneReader(){
    const {PSM}=await import('tesseract.js');await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT,user_defined_dpi:'300',tessedit_char_whitelist:''});
    const [first,enhanced]=await Promise.all([worker.recognize(file,{}, {blocks:true}),preprocess(file)]);
    if(closed)throw abort();
+   const firstBlocks=await recoverIneCriticalBlocks(worker,file,first.data.blocks,cancelled);
    let a=extractIneCandidates(first.data.text);
-   try{a=await supplementIneScan(worker,file,a,cancelled,first.data.blocks)}catch{if(closed)throw abort()}
-   const original={values:a.values,confidence:fieldConfidences(a.values,first.data.blocks)};
-   const originalCurp=await focusedCurp(worker,file,first.data.blocks);
+   try{a=await supplementIneScan(worker,file,a,cancelled,firstBlocks)}catch{if(closed)throw abort()}
+   const original={values:a.values,confidence:readingConfidences(a,firstBlocks)};
+   const originalCurp=await focusedCurp(worker,file,firstBlocks);
    if(originalCurp){const conflict=original.values.curp&&original.values.curp!==originalCurp.value;original.values.curp=originalCurp.value;original.confidence.curp=conflict?0:originalCurp.confidence}
    progress('Comparando con la imagen corregida…');
    await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT});
    const second=await worker.recognize(enhanced.blob,{}, {blocks:true});
    if(closed)throw abort();
+   const secondBlocks=await recoverIneCriticalBlocks(worker,enhanced.blob,second.data.blocks,cancelled);
    let b=extractIneCandidates(second.data.text);
-   try{b=await supplementIneScan(worker,new File([enhanced.blob],'lectura.png',{type:'image/png'}),b,cancelled,second.data.blocks)}catch{if(closed)throw abort()}
+   try{b=await supplementIneScan(worker,new File([enhanced.blob],'lectura.png',{type:'image/png'}),b,cancelled,secondBlocks)}catch{if(closed)throw abort()}
    if(closed)throw abort();
-   const processed={values:b.values,confidence:fieldConfidences(b.values,second.data.blocks)};
+   const processed={values:b.values,confidence:readingConfidences(b,secondBlocks)};
    await worker.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT});
    const binary=await worker.recognize(enhanced.binaryBlob,{}, {blocks:true});if(closed)throw abort();
    const alternate=extractIneCandidates(binary.data.text),alternateConfidence=fieldConfidences(alternate.values,binary.data.blocks);
@@ -152,7 +163,7 @@ export function createIneReader(){
     if(!primary&&other){Object.assign(processed.values,{[field]:other});processed.confidence[field]=alternateConfidence[field]||0}
     else if(primary&&other&&normalizeIneValue(primary)!==normalizeIneValue(other))processed.confidence[field]=0;
    }
-   const processedCurp=await focusedCurp(worker,enhanced.blob,second.data.blocks);
+   const processedCurp=await focusedCurp(worker,enhanced.blob,secondBlocks);
    if(processedCurp){const conflict=processed.values.curp&&processed.values.curp!==processedCurp.value;processed.values.curp=processedCurp.value;processed.confidence.curp=conflict?0:processedCurp.confidence}
    return {evidence:{original,processed,warnings:enhanced.warnings},candidates:mergeIneReadings(original,processed),diagnostics:{original:diagnoseIneReading(first.data.text,original),processed:diagnoseIneReading(second.data.text+'\n'+binary.data.text,processed),warnings:enhanced.warnings}};
   },

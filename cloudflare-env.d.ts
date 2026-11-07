@@ -6,5 +6,6 @@ declare namespace Cloudflare {
     MONGODB_DB?: string;
     MONGODB_FILES?: string;
     DEMO_ENABLED?: string;
+    PROVIDER_REVIEW_QUEUE?: Queue<{job:string}>;
   }
 }

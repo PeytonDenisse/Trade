@@ -12,6 +12,7 @@ export type Ctx={
  id:()=>string;
  json:(data:any,status?:number,headers?:Record<string,string>)=>Response;
  user:any;
+ automaticReviewAvailable?:boolean;
  auth:()=>any;
  token?:string;
  url:URL;

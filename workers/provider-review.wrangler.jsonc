@@ -1,0 +1,13 @@
+{
+ "$schema":"../node_modules/wrangler/config-schema.json",
+ "name":"trade-provider-review-trial",
+ "main":"provider-review.ts",
+ "compatibility_date":"2026-05-15",
+ "compatibility_flags":["nodejs_compat"],
+ "workers_dev":false,
+ "preview_urls":false,
+ "browser":{"binding":"BROWSER"},
+ "vars":{"MONGODB_DB":"trade","TRADE_APP_ORIGIN":"https://trade.trade-demo-eexxttrraa.workers.dev"},
+ "queues":{"consumers":[{"queue":"trade-provider-review-trial","max_batch_size":1,"max_concurrency":1,"max_retries":4,"retry_delay":30}]},
+ "alias":{"punycode/":"../node_modules/punycode/punycode.js"}
+}

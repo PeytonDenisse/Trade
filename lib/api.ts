@@ -11,7 +11,8 @@ import {getSettings} from './settings-db';
 import {validateIneIdentity} from './ine-identity';
 import {expireRequests,lifecyclePost} from './api-lifecycle';
 import type {Ctx} from './api-context';
-type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string,MONGODB_FILES?:string};
+import {enqueueProviderReview,ownReviewState,type ReviewQueue} from './provider-review-jobs';
+type Env=DbEnv&{BUCKET?:any,DEMO_ENABLED?:string,MONGODB_FILES?:string,PROVIDER_REVIEW_QUEUE?:ReviewQueue};
 const json=(data:any,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 const id=()=>crypto.randomUUID();
 // Replaces the SQL JOIN on users: copies the user's name from `field` into `as`.
@@ -53,7 +54,9 @@ async function route(req:Request,env:Env,db:Db){
  const user:any=session?await one('users',{id:session.user_id,...ACTIVE},{id:1,name:1,email:1,role:1,photo:1}):null;
  if(user?.photo)user.photo_url='/api/files/'+user.photo;
  const auth=()=>{if(!user)fail('Inicia sesión para continuar.',401);return user};
- const ctx:Ctx={db,c,one,all,agg,fail:fail as Ctx['fail'],sid,id,json,user,auth,token,url};
+ const automaticReviewAvailable=Boolean(env.PROVIDER_REVIEW_QUEUE&&env.MONGODB_FILES==='true');
+ const ctx:Ctx={db,c,one,all,agg,fail:fail as Ctx['fail'],sid,id,json,user,auth,token,url,automaticReviewAvailable};
+ const scheduleReview=(providerId:string,documentId:string)=>enqueueProviderReview(db,automaticReviewAvailable?env.PROVIDER_REVIEW_QUEUE:undefined,providerId,documentId).catch(()=>false);
  const own=async(rid:string)=>{const r=await one('requests',{id:rid});if(!r)fail('Solicitud no encontrada.',404);return r as any};
  // A request asked to one provider (target) is only open to that provider.
  const openTo=(r:any,uid:string)=>!r.target||r.target===uid;
@@ -75,7 +78,11 @@ async function route(req:Request,env:Env,db:Db){
  if(path==='trades')return json(await tradeNames(db));
  // What visitors need to know before signing up.
  if(path==='settings'){const s=await getSettings(db);return json({registrationOpen:s.registrationOpen,providerApplicationsOpen:s.providerApplicationsOpen})}
- if(path==='me')return json({user,application:user?await one('providers',{id:user.id}):null});
+ if(path==='me'){
+  const application=user?await one('providers',{id:user.id}):null;
+  if(application?.document&&application.status==='Pendiente')application.automaticReview=await ownReviewState(db,user.id,application.document);
+  return json({user,application});
+ }
  if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...ACTIVE,...(t?{trades:t}:{})}},...withActiveAccount,{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:{$map:{input:{$filter:{input:'$_r',cond:{$ne:['$$this.hidden',true]}}},in:'$$this.stars'}}}}},...withName('id','name'),...withPhotoUrl,{$project:{document:0,identity:0,analysis:0,analysis_eligible:0,_r:0}}]))}
  if(path.startsWith('providers/')){const pid=path.split('/')[1];const [p]=await agg('providers',[{$match:{id:pid,status:'Aprobada',...ACTIVE}},...withActiveAccount,...withName('id','name'),...withPhotoUrl,{$project:{document:0,identity:0,analysis:0,analysis_eligible:0}}]);if(!p)fail('Proveedor no encontrado.',404);const done=(await all('requests',{provider:pid,status:'Completado'},{},{id:1})).map(r=>r.id);return json({...p,works:await all('files',{request:{$in:done},kind:{$in:['before','after']}},{},{id:1,kind:1,request:1,url:1}),reviews:await all('reviews',{provider:pid,hidden:{$ne:true}},{},{stars:1,comment:1})})}
  if(path==='requests'){auth();const scope=url.searchParams.get('scope');if(scope==='available'){const p=await provider();return json(await agg('requests',[{$match:{trade:{$in:tradesOf(p)},status:'Activa',owner:{$ne:user.id},$or:[{target:null},{target:{$exists:false}},{target:user.id}]}},{$sort:{created:-1}},...withName('owner','owner_name'),...withProblemFile,{$project:{location:0}}]))}if(scope==='assigned')return json(await agg('requests',[{$match:{provider:user.id}},{$sort:{created:-1}},...withProblemFile]));return json(await agg('requests',[{$match:{owner:user.id}},{$sort:{created:-1}},...withProblemFile,...withName('target','target_name')]))}
@@ -110,9 +117,10 @@ async function route(req:Request,env:Env,db:Db){
   if(document===previousDocument)fail('Adjunta una nueva captura para volver a revisión.');
   const result=await c('providers').updateOne({id:user.id,status:'Pendiente',document:previousDocument,'analysis.outcome':'review'},{$set:{document,identity,analysis_eligible:true},$unset:{analysis:''}});
   if(!result.modifiedCount)fail('El registro cambió o ya fue resuelto. Actualiza tu perfil.',409);
+  await scheduleReview(user.id,document);
   return json({ok:true});
  }
- if(path==='apply'){if(user.role==='admin')fail('Las cuentas de administración no pueden registrarse como proveedores.',403);const previous:any=await one('providers',{id:user.id});if(previous&&previous.status!=='Rechazada')fail('Ya enviaste tu registro como proveedor.',409);if(!(await getSettings(db)).providerApplicationsOpen)fail('Los registros de proveedores están cerrados por ahora.',403);const identity=validateIneIdentity(b.identity);const record={id:user.id,...(list=>({trade:list[0],trades:list}))(tradeList(b.trades??b.trade,offered)),experience:required(b.experience,'Experiencia',500),zone:required(b.zone,'Zona',200),description:required(b.description,'Descripción',2000),photo:await fileOwned(b.photo,'photo'),document:await fileOwned(b.document,'document'),identity,analysis_eligible:true,status:'Pendiente',active:true};if(previous)await c('providers').deleteOne({id:user.id,status:'Rechazada'});await c('providers').insertOne(record);return json({ok:true},201)}
+ if(path==='apply'){if(user.role==='admin')fail('Las cuentas de administración no pueden registrarse como proveedores.',403);const previous:any=await one('providers',{id:user.id});if(previous&&previous.status!=='Rechazada')fail('Ya enviaste tu registro como proveedor.',409);if(!(await getSettings(db)).providerApplicationsOpen)fail('Los registros de proveedores están cerrados por ahora.',403);const identity=validateIneIdentity(b.identity);const record={id:user.id,...(list=>({trade:list[0],trades:list}))(tradeList(b.trades??b.trade,offered)),experience:required(b.experience,'Experiencia',500),zone:required(b.zone,'Zona',200),description:required(b.description,'Descripción',2000),photo:await fileOwned(b.photo,'photo'),document:await fileOwned(b.document,'document'),identity,analysis_eligible:true,status:'Pendiente',active:true};if(previous)await c('providers').deleteOne({id:user.id,status:'Rechazada'});await c('providers').insertOne(record);await scheduleReview(user.id,record.document);return json({ok:true},201)}
  // Providers hire other trades; a plumber posting a plumbing request makes no sense.
  if(path==='requests'){if(user.role==='admin')fail('Las cuentas de administración no publican solicitudes de servicio.',403);const registration:any=await one('providers',{id:user.id,status:{$ne:'Rechazada'}});const {maxOpenRequests}=await getSettings(db);if(await c('requests').countDocuments({owner:user.id,status:'Activa'})>=maxOpenRequests)fail(`Ya tienes ${maxOpenRequests} solicitudes activas; espera a que avancen o cancela alguna.`,409);if(registration&&tradesOf(registration).includes(trade(b.trade,offered)))fail(`No puedes publicar solicitudes de ${trade(b.trade,offered)}: es uno de tus oficios.`,403);let target:string|null=null;if(b.provider!==undefined&&b.provider!==null&&b.provider!==''){target=sid(b.provider);if(target===user.id)fail('No puedes pedirte una cotización a ti mismo.',403);const chosen:any=await approved(target);if(!chosen)fail('Ese profesional no está disponible.',404);if(!tradesOf(chosen).includes(trade(b.trade,offered)))fail(`Ese profesional no ofrece ${trade(b.trade,offered)}.`,400)}
   const location=serviceLocation(b.location);const rid=id();await c('requests').insertOne({id:rid,owner:user.id,trade:trade(b.trade,offered),description:required(b.description,'Descripción'),date:date(b.date),status:'Activa',provider:null,quote:null,created:new Date().toISOString(),...(target?{target}:{}),...(location?{location}:{})});return json({id:rid},201)}

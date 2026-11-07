@@ -3,7 +3,7 @@ import {cleanIneEvidence,evaluateIne,INE_ANALYSIS_VERSION,INE_ENGINE_VERSION,typ
 
 function conflict(message:string):never{throw Object.assign(Error(message),{status:409})}
 // All three writes commit together. No approval/role/audit can be left half saved.
-export async function decideProvider(x:Ctx,input:{id:string;decision:'approve'|'reject'|'analysis';reason?:string;document?:string;runId?:string;evidence?:unknown}){
+export async function decideProvider(x:Pick<Ctx,'db'|'user'|'id'>,input:{id:string;decision:'approve'|'reject'|'analysis';reason?:string;document?:string;runId?:string;evidence?:unknown;job?:{id:string;lease:string;generation:number}}){
  const evidence=input.decision==='analysis'?cleanIneEvidence(input.evidence):undefined;
  const session=x.db.client.startSession();
  try{return await session.withTransaction(async()=>{
@@ -15,6 +15,13 @@ export async function decideProvider(x:Ctx,input:{id:string;decision:'approve'|'
   if(input.decision==='analysis'&&registration.analysis?.runId===input.runId&&registration.analysis?.document===input.document)return {analysis:registration.analysis,approved:registration.status==='Aprobada'};
   if(registration.status!=='Pendiente')conflict('El registro ya fue resuelto por otra revisión.');
   if(input.document&&registration.document!==input.document)conflict('El documento cambió. Actualiza la lista y analízalo de nuevo.');
+  if(input.job){
+   if(registration.analysis?.document===input.document)conflict('El registro ya tiene un análisis guardado.');
+   const control=await x.db.collection('settings').updateOne({key:'app',providerAutomaticReview:true,providerReviewGeneration:input.job.generation},{$inc:{providerReviewFence:1}},{session});
+   if(!control.matchedCount)conflict('La revisión automática se desactivó o cambió.');
+   const job=await x.db.collection('provider_review_jobs').updateOne({_id:input.job.id as any,provider:input.id,document:input.document,state:'processing',lease:input.job.lease,lease_until:{$gt:Date.now()}},{$set:{state:'finished'}},{session});
+   if(!job.matchedCount)conflict('Otra ejecución tiene este análisis o expiró la reserva.');
+  }
   let analysis:IneAnalysis|undefined;
   if(evidence){
    if(!registration.identity)conflict('Este registro antiguo requiere revisión manual.');

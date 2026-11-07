@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const withoutImages = args.includes('--without-images');
-const [bucketName = 'trade-files', workerName = 'trade'] = args.filter(arg => arg !== '--without-images');
+const automaticReview = args.includes('--automatic-review');
+const [bucketName = 'trade-files', workerName = 'trade'] = args.filter(arg => !['--without-images','--automatic-review'].includes(arg));
 for (const name of [bucketName, workerName]) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error('Usa nombres en minúsculas con números y guiones.');
 }
@@ -19,6 +20,10 @@ delete config.vars.MONGODB_URI;
 delete config.vars.DEMO_ACCESS_CODE;
 config.d1_databases = [];
 config.r2_buckets = withoutImages ? [] : [{ binding: 'BUCKET', bucket_name: bucketName }];
+if(automaticReview){
+ if(!withoutImages)throw Error('La prueba automática requiere --without-images para leer los documentos privados en MongoDB.');
+ config.queues={...config.queues,producers:[...(config.queues?.producers||[]).filter(item=>item.binding!=='PROVIDER_REVIEW_QUEUE'),{binding:'PROVIDER_REVIEW_QUEUE',queue:'trade-provider-review-trial'}]};
+}
 writeFileSync(output, JSON.stringify(config, null, 2) + '\n');
 console.log(`Configuración pública preparada: ${fileURLToPath(output)}`);
 console.log('El recorrido académico permite entrar directamente a los tres roles de demo.');

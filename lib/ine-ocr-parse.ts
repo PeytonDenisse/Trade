@@ -5,6 +5,7 @@ import {stateByAbbreviation} from './ine-states';
 export type IneCandidateStatus = 'Reconocido' | 'Revisar';
 export type IneOcrResult = {
   values: Partial<IneIdentity>;
+  confidence?: Partial<Record<keyof IneIdentity, number>>;
   status: Partial<Record<keyof IneIdentity, IneCandidateStatus>>;
 };
 export type IneZone='curp'|'fechaNacimiento'|'domicilio';

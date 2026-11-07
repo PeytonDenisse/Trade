@@ -89,3 +89,15 @@ test('OCR real: compara lecturas por campo con muestras sintéticas',async({page
  expect(scores.find((s:any)=>s.variant==='reference-compact').missing).not.toContain('curp');
  const skew=scores.find((s:any)=>s.variant==='skew');expect(skew.processed).toBeGreaterThanOrEqual(skew.original);
 });
+
+
+test('La fecha recuperada en recortes conserva su puntuación aunque falte en la página completa',async({page})=>{
+ const result=await page.evaluate(()=>(window as any).harness.cropConfidence());
+ expect(result).toEqual({date:'1956-12-31',confidence:93});
+});
+
+
+test('La recuperacion local necesita etiquetas reales y no asigna campos por coordenadas',async({page})=>{
+ expect(await page.evaluate(()=>(window as any).harness.recoverLabels(false))).toEqual([]);
+ expect(await page.evaluate(()=>(window as any).harness.recoverLabels(true))).toEqual(['fechaNacimiento','curp']);
+});

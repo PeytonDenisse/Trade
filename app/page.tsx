@@ -80,6 +80,15 @@ const [resetToken,setResetToken]=useState('');
 const [tradeNames,setTradeNames]=useState<string[]>(trades);
 const [signupOpen,setSignupOpen]=useState(true);
 async function me(){const d=await api('me');setUser(d.user);setApplication(d.application);return d}
+useEffect(()=>{
+ if(!['queued','processing'].includes(application?.automaticReview?.state))return;
+ const controller=new AbortController();let running=false;
+ const timer=setInterval(async()=>{
+  if(running||window.document.hidden)return;running=true;
+  try{const data=await api('me',undefined,{signal:controller.signal});if(!controller.signal.aborted){setUser(data.user);setApplication(data.application)}}catch{}finally{running=false}
+ },5000);
+ return()=>{clearInterval(timer);controller.abort()};
+},[application?.automaticReview?.state]);
 // The provider's own trade can't be requested; an empty trade means the client chooses.
 function startRequest(trade='',target:{id:string;name:string;trades:string[]}|null=null){setRequestTrade(trade);setRequestTarget(target);if(user)go('create');else{setAuthDestination('create');go('login')}}
 const ownTrades=application&&application.status!=='Rechazada'?tradesOf(application):[];

@@ -1,3 +1,4 @@
+import {recoverIneCriticalBlocks,planIneScans,supplementIneScan} from '../../lib/ine-ocr-image';
 import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {AutomaticIneReview} from '../../components/admin/automatic-ine-review';
@@ -51,6 +52,19 @@ function Queue({deferred=false,failure=false,legacy=false}:{deferred?:boolean;fa
 }
 function Capture(){const [value,setValue]=useState(emptyIneDraft),[document,setDocument]=useState(''),[confirmed,setConfirmed]=useState(false);return <IneIdentityCapture value={value} onChange={setValue} documentId={document} onUploadDocument={async()=>{state.uploads++;return 'adjunto'}} onDocumentAttached={setDocument} confirmed={confirmed} onConfirmed={setConfirmed} errors={{}} showRequired={false}/>}
 (window as any).harness={
+ recoverLabels:async(withLabels:boolean)=>{
+  const file=await card();
+  const rows=withLabels?[[{text:'CURP',confidence:96,bbox:{x0:20,y0:30,x1:150,y1:85}}],[{text:'FECHA',confidence:96,bbox:{x0:20,y0:210,x1:170,y1:265}},{text:'DE',confidence:96,bbox:{x0:180,y0:210,x1:230,y1:265}},{text:'NACIMIENTO',confidence:96,bbox:{x0:240,y0:210,x1:550,y1:265}}]]:[];
+  const worker={setParameters:async()=>{},recognize:async()=>({data:{blocks:[{paragraphs:[{lines:rows.map(words=>({words}))}]}]}})};
+  const blocks=await recoverIneCriticalBlocks(worker as any,file,[],()=>false);
+  return planIneScans(blocks,2000,1260).map(scan=>scan.field).filter(field=>field==='curp'||field==='fechaNacimiento');
+ },
+ cropConfidence:async()=>{
+  const file=await card();
+  const worker={setParameters:async()=>{},recognize:async()=>({data:{text:'FECHA DE NACIMIENTO\n31/12/1956',confidence:96,blocks:[{paragraphs:[{lines:[{words:[{text:'31/12/1956',confidence:93}]}]}]}]}})};
+  const result=await supplementIneScan(worker as any,file,{values:{},status:{}},()=>false,[]);
+  return {date:result.values.fechaNacimiento,confidence:result.confidence?.fechaNacimiento};
+ },
  zoneRead:async(zone:'curp'|'fechaNacimiento'|'domicilio')=>{
   const canvas=document.createElement('canvas');canvas.width=1400;canvas.height=zone==='domicilio'?310:120;
   const ctx=canvas.getContext('2d')!;ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#111';ctx.font='48px Arial';

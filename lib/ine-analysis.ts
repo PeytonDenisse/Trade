@@ -1,7 +1,9 @@
 import {validateIneIdentity,type IneIdentity} from './ine-identity';
 
+// Shared by the form and the server; agreement alone never raises this score.
+export const INE_MIN_CONFIDENCE=75;
 export const INE_ANALYSIS_VERSION='ine-local-v1';
-export const INE_ENGINE_VERSION='tesseract-7/opencv-4.12';
+export const INE_ENGINE_VERSION='tesseract-7/opencv-4.12/field-confidence-2/field-crops-3';
 export const identityKeys=(['nombres','apellidoPaterno','apellidoMaterno','fechaNacimiento','sexo','curp','calleNumero','colonia','codigoPostal','municipio','estado','vigencia'] as const);
 export const criticalKeys:readonly (keyof IneIdentity)[]=['nombres','apellidoPaterno','apellidoMaterno','curp','fechaNacimiento','vigencia'];
 export type IneReading={values:Partial<IneIdentity>;confidence:Partial<Record<keyof IneIdentity,number>>};
@@ -44,7 +46,7 @@ export function evaluateIne(identity:unknown,evidence:IneEvidence,duplicate:bool
   const critical=criticalKeys.includes(field)&&!(field==='apellidoMaterno'&&!declared);
   if(critical){
    if(!a||!b)issues.push('Falta una de las dos lecturas.');
-   if(ca<85||cb<85)issues.push('Confianza inferior a 85 en alguna lectura.');
+   if(ca<INE_MIN_CONFIDENCE||cb<INE_MIN_CONFIDENCE)issues.push(`Confianza inferior a ${INE_MIN_CONFIDENCE} en alguna lectura.`);
    if(a&&b&&normalizeIneValue(a)!==normalizeIneValue(b))issues.push('Las lecturas no coinciden.');
    if((a&&normalizeIneValue(a)!==normalizeIneValue(declared))||(b&&normalizeIneValue(b)!==normalizeIneValue(declared)))issues.push('No coincide con el dato declarado.');
   }else if((a&&normalizeIneValue(a)!==normalizeIneValue(declared))||(b&&normalizeIneValue(b)!==normalizeIneValue(declared)))issues.push('Hay una diferencia que debe revisar administración.');

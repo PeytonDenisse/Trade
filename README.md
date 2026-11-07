@@ -63,3 +63,6 @@ La configuración y el paso de activación con el secreto `CLOUDFLARE_API_TOKEN`
 - Cotizaciones en MXN, sin cobros. Fechas se validan por día UTC; adaptar zona antes de uso real en límites de medianoche.
 - No hay chat, cancelaciones, edición de perfil ni rechazo de proveedores, porque no forman parte de los criterios suministrados.
 - Las métricas de ahorro de tiempo y confianza requieren investigación con usuarios; no se han medido ni se presentan como resultados.
+## Prueba reversible de aprobación al enviar
+
+Consulta [la prueba local y cómo volver al flujo anterior](docs/prueba-aprobacion-al-enviar.md). `pnpm review:trial` inicia un entorno aislado con datos ficticios; no usa Atlas ni activa servicios de pago.

@@ -221,7 +221,14 @@ export async function adminPost(x:Ctx,path:string,b:any){
  if(path==='admin/settings'){
   admin(x);let update:Partial<Settings>;
   try{update=settingsUpdate(b)}catch(e:any){x.fail(e.message)}
-  await x.c('settings').updateOne({key:'app'},{$set:{...update!,updated_at:new Date().toISOString(),updated_by:x.user.id},$setOnInsert:{key:'app'}},{upsert:true});
+  if(update!.providerAutomaticReview===true&&!x.automaticReviewAvailable)x.fail('La prueba automática todavía no está conectada. Conserva la revisión actual hasta configurar Browser Run y la cola.',503);
+  if(update!.providerAutomaticReview===true){
+   const info=(await Promise.all(['settings','provider_review_jobs'].map(name=>x.db.listCollections({name}).toArray()))).flat();
+   const settingsInfo=info.find(item=>item.name==='settings');
+   const properties=settingsInfo&&'options' in settingsInfo?settingsInfo.options?.validator?.$jsonSchema?.properties:undefined;
+   if(!info.some(item=>item.name==='provider_review_jobs')||!properties?.providerAutomaticReview||!properties?.providerReviewGeneration||!properties?.providerReviewFence)x.fail('Falta preparar la base para la prueba automática. Consulta la guía de activación antes de encenderla.',503);
+  }
+  await x.c('settings').updateOne({key:'app'},{$set:{...update!,updated_at:new Date().toISOString(),updated_by:x.user.id},$setOnInsert:{key:'app'},...(update!.providerAutomaticReview!==undefined?{$inc:{providerReviewGeneration:1}}:{})},{upsert:true});
   await audit(x,'settings.update',null,Object.entries(update!).map(([k,v])=>`${k}: ${v}`).join(', '));
   return x.json(await getSettings(x.db));
  }
