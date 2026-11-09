@@ -6,8 +6,8 @@ export type IneReadDiagnostics={original:Record<keyof IneIdentity,IneReadStatus>
 const headings:Record<keyof IneIdentity,RegExp>={
  nombres:/\bNOMBRES?\b/,apellidoPaterno:/\b(?:NOMBRES?|APELLIDO\s+PATERNO)\b/,apellidoMaterno:/\b(?:NOMBRES?|APELLIDO\s+MATERNO)\b/,
  curp:/\bC\s*U\s*R\s*P\b/,fechaNacimiento:/\bFECHA\s*(?:DE\s*)?NACIMI(?:E(?:N(?:T(?:O)?)?)?)?\b/,sexo:/\b(?:SEXO|GENERO)\b/,
- calleNumero:/\b(?:DOMICILIO|CALLE)\b/,colonia:/\b(?:DOMICILIO|COLONIA|COL)\b/,codigoPostal:/\b(?:DOMICILIO|CODIGO\s+POSTAL|C\s*P)\b/,
- municipio:/\b(?:DOMICILIO|MUNICIPIO|ALCALDIA)\b/,estado:/\b(?:DOMICILIO|ESTADO)\b/,vigencia:/\b(?:VIGENCIA|VENCIMIENTO)\b/,
+ calleNumero:/\b(?:DOMICILI?O|CALLE)\b/,colonia:/\b(?:DOMICILI?O|COLONIA|COL)\b/,codigoPostal:/\b(?:DOMICILI?O|CODIGO\s+POSTAL|C\s*P)\b/,
+ municipio:/\b(?:DOMICILI?O|MUNICIPIO|ALCALDIA)\b/,estado:/\b(?:DOMICILI?O|ESTADO)\b/,vigencia:/\b(?:VIGENCIA|VENCIMIENTO)\b/,
 };
 
 // Only categories leave this function. Never include OCR strings, identifiers,

@@ -15,3 +15,11 @@ Verification: unit/API tests, browser capture and OCR fixtures, TypeScript and p
 ## Printed rows and busy backgrounds
 
 When the page pass misses CURP or birth headings, a bounded lower-card scan suppresses the light background and verifies the printed headings before defining any field crop. It cannot populate a field from coordinates alone. Existing page anchors remain preferred. Date and CURP crops follow detected word boxes where available to exclude the neighboring section/registration columns and decorative lines. Thresholded CURP retries retain measured scores and conflicting variants remain in review. Date variants that disagree remain unresolved, even when one looks plausible. The minimum remains 75 in both critical readings.
+
+The lower-card heading recovery includes the validity column and still runs when CURP and birth headings are already present but validity is missing. Given-name crops follow the actual third printed name row and preserve adjacent compound-name words, while excluding distant background marks. Rotation and crop in the editor are applied before OCR; a remaining extraction failure should not be attributed to the orientation of the originally attached photo alone.
+
+## Street noise and character rereads
+
+Address parsing tolerates the observed DOMICILO spelling of its heading. It can skip up to two non-numeric, unlabeled noise rows before an explicitly prefixed street, without treating colony/locality rows as a street. A local address heading scan verifies uncertain headings in two actual crops and rejects distorted heading boxes; street crops follow the verified text row.
+
+CURP handling can re-read the observed final glyph when the complete 18-character line ends with a letter in the mandatory numeric position. It requires matching symbol coordinates, two agreeing image-based digit reads and a structurally valid reconstructed value. It never uses the declared CURP as an OCR hint or assigns a digit from a character substitution table. Conflicting readings and missing independent evidence still require manual review. Existing approved providers and saved analyses are not changed automatically.
