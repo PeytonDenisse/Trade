@@ -1,4 +1,4 @@
-import type {Worker as OcrWorker,Block} from 'tesseract.js';
+import type {Worker as OcrWorker,Block,Page,PSM} from 'tesseract.js';
 import {extractIneCandidates,extractIneZoneCandidates,type IneOcrResult,type IneZone} from './ine-ocr-parse';
 import {supplementIneScan,planIneCurpRegion,recoverIneCriticalBlocks} from './ine-ocr-image';
 import {INE_MIN_CONFIDENCE,identityKeys,normalizeIneValue,type IneEvidence,type IneReading} from './ine-analysis';
@@ -43,6 +43,42 @@ export function selectBestFocusedCurp(pairs:readonly {value:string;confidence:nu
  return {...best,confidence:new Set(pairs.map(pair=>pair.value)).size===1?best.confidence:0};
 }
 
+// The final CURP position is numeric. Re-read its actual glyph instead of
+// substituting a similar-looking letter or using the applicant's declaration.
+export function planCurpDigitRetry(page:Pick<Page,'text'|'blocks'>){
+ const raw=page.text.toUpperCase().replace(/\s/g,'');
+ if(!/^[A-ZÑ&0-9]{17}[A-Z]$/.test(raw))return;
+ const probe=raw.slice(0,17)+'0';
+ if(!extractIneZoneCandidates('curp',probe,probe).values.curp)return;
+ const symbols=(page.blocks||[]).flatMap(block=>block.paragraphs.flatMap(paragraph=>paragraph.lines.flatMap(line=>line.words.flatMap(word=>word.symbols||[]))))
+  .filter(symbol=>/^[A-ZÑ&0-9]$/.test(symbol.text.toUpperCase()));
+ if(symbols.map(symbol=>symbol.text.toUpperCase()).join('')!==raw)return;
+ const box=symbols.at(-1)?.bbox;if(!box||box.x1<=box.x0||box.y1<=box.y0)return;
+ return {prefix:raw.slice(0,17),box};
+}
+async function retryCurpDigit(worker:OcrWorker,source:HTMLCanvasElement,page:Page,mode:PSM,whitelist:string){
+ const retry=planCurpDigitRetry(page);if(!retry)return page;
+ const {PSM}=await import('tesseract.js'),digits:{text:string;confidence:number}[]=[];
+ try{
+  await worker.setParameters({tessedit_pageseg_mode:PSM.SINGLE_CHAR,tessedit_char_whitelist:'0123456789'});
+  const h=retry.box.y1-retry.box.y0,pad=Math.max(2,Math.round(h*.08));
+  const left=Math.max(0,retry.box.x0-pad),top=Math.max(0,retry.box.y0-pad);
+  const width=Math.min(source.width-left,retry.box.x1-retry.box.x0+2*pad),height=Math.min(source.height-top,h+2*pad);
+  for(const threshold of [null,110]){
+   const canvas=document.createElement('canvas');const border=Math.ceil(height*.4);canvas.width=width*2+2*border;canvas.height=height*2+2*border;
+   const context=canvas.getContext('2d',{willReadFrequently:true})!;context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
+   context.drawImage(source,left,top,width,height,border,border,width*2,height*2);
+   if(threshold!==null){const pixels=context.getImageData(0,0,canvas.width,canvas.height);for(let i=0;i<pixels.data.length;i+=4){const d=pixels.data,v=d[i]*.2126+d[i+1]*.7152+d[i+2]*.0722<threshold?0:255;d[i]=d[i+1]=d[i+2]=v}context.putImageData(pixels,0,0)}
+   const result=(await worker.recognize(canvas)).data;digits.push({text:result.text.trim(),confidence:result.confidence});
+  }
+  if(digits.every(digit=>/^\d$/.test(digit.text)&&digit.confidence>=25)&&digits[0].text===digits[1].text){
+   const value=retry.prefix+digits[0].text;
+   if(extractIneZoneCandidates('curp',value,value).values.curp)return {text:value,confidence:Math.min(page.confidence,...digits.map(digit=>digit.confidence))};
+  }
+  return page;
+ }finally{await worker.setParameters({tessedit_pageseg_mode:mode,tessedit_char_whitelist:whitelist})}
+}
+
 // Re-read the printed CURP as a line, without using the applicant's declaration
 // as a hint. Two agreeing crops are required before replacing the page reading.
 async function focusedCurp(worker:OcrWorker,file:Blob,blocks:Block[]|null|undefined){
@@ -60,10 +96,10 @@ async function focusedCurp(worker:OcrWorker,file:Blob,blocks:Block[]|null|undefi
    await worker.setParameters({tessedit_pageseg_mode:mode,tessedit_char_whitelist:mode===PSM.RAW_LINE?'':'ABCDEFGHIJKLMNOPQRSTUVWXYZÑ&0123456789'});
    const canvas=document.createElement('canvas');canvas.width=width*scale;canvas.height=height*scale;
    const context=canvas.getContext('2d',{willReadFrequently:true})!;context.drawImage(bitmap,left,top,width,height,0,0,canvas.width,canvas.height);
-   const first=(await worker.recognize(canvas)).data;
+   const first=await retryCurpDigit(worker,canvas,(await worker.recognize(canvas,{}, {blocks:true})).data,mode,mode===PSM.RAW_LINE?'':'ABCDEFGHIJKLMNOPQRSTUVWXYZÑ&0123456789');
    const pixels=context.getImageData(0,0,canvas.width,canvas.height);
    for(let i=0;i<pixels.data.length;i+=4){const gray=Math.round(.2126*pixels.data[i]+.7152*pixels.data[i+1]+.0722*pixels.data[i+2]);pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=gray}
-   context.putImageData(pixels,0,0);const second=(await worker.recognize(canvas)).data;
+   context.putImageData(pixels,0,0);const second=await retryCurpDigit(worker,canvas,(await worker.recognize(canvas,{}, {blocks:true})).data,mode,mode===PSM.RAW_LINE?'':'ABCDEFGHIJKLMNOPQRSTUVWXYZÑ&0123456789');
    const found=selectFocusedCurp(first,second);if(found)pairs.push(found);
   }
   if((selectBestFocusedCurp(pairs)?.confidence||0)<INE_MIN_CONFIDENCE){

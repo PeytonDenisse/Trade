@@ -3,7 +3,7 @@ import {validateIneIdentity,type IneIdentity} from './ine-identity';
 // Shared by the form and the server; agreement alone never raises this score.
 export const INE_MIN_CONFIDENCE=75;
 export const INE_ANALYSIS_VERSION='ine-local-v1';
-export const INE_ENGINE_VERSION='tesseract-7/opencv-4.12/field-confidence-2/field-crops-3';
+export const INE_ENGINE_VERSION='tesseract-7/opencv-4.12/field-confidence-2/field-crops-5';
 export const identityKeys=(['nombres','apellidoPaterno','apellidoMaterno','fechaNacimiento','sexo','curp','calleNumero','colonia','codigoPostal','municipio','estado','vigencia'] as const);
 export const criticalKeys:readonly (keyof IneIdentity)[]=['nombres','apellidoPaterno','apellidoMaterno','curp','fechaNacimiento','vigencia'];
 export type IneReading={values:Partial<IneIdentity>;confidence:Partial<Record<keyof IneIdentity,number>>};

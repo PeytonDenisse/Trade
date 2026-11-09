@@ -99,5 +99,16 @@ test('La fecha recuperada en recortes conserva su puntuación aunque falte en la
 
 test('La recuperacion local necesita etiquetas reales y no asigna campos por coordenadas',async({page})=>{
  expect(await page.evaluate(()=>(window as any).harness.recoverLabels(false))).toEqual([]);
- expect(await page.evaluate(()=>(window as any).harness.recoverLabels(true))).toEqual(['fechaNacimiento','curp']);
+ expect(await page.evaluate(()=>(window as any).harness.recoverLabels(true))).toEqual(['fechaNacimiento','vigencia','curp']);
+});
+
+
+test('La recuperacion busca vigencia aunque CURP y nacimiento ya tengan etiquetas',async({page})=>{
+ expect(await page.evaluate(()=>(window as any).harness.recoverLabels(true,true))).toContain('vigencia');
+});
+
+
+test('El encabezado de domicilio deformado necesita dos relecturas validas',async({page})=>{
+ expect(await page.evaluate(()=>(window as any).harness.verifyStreetHeading(true))).toBe(true);
+ expect(await page.evaluate(()=>(window as any).harness.verifyStreetHeading(false))).toBe(false);
 });

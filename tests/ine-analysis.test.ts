@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cleanIneEvidence,evaluateIne,identityKeys,normalizeIneValue,type IneEvidence} from '../lib/ine-analysis';
-import {mergeIneReadings,fieldConfidences,selectFocusedCurp,selectBestFocusedCurp} from '../lib/ine-reader';
+import {mergeIneReadings,fieldConfidences,selectFocusedCurp,selectBestFocusedCurp,planCurpDigitRetry} from '../lib/ine-reader';
 import {diagnoseIneReading} from '../lib/ine-ocr-diagnostics';
 const identity={nombres:'LUIS',apellidoPaterno:'GOMEZ',apellidoMaterno:'LOPEZ',fechaNacimiento:'1990-01-01',sexo:'H' as const,curp:'GOML900101HDFRRN09',calleNumero:'Calle Ficticia 10',colonia:'Centro',codigoPostal:'00100',municipio:'Ciudad de México',estado:'Ciudad de México',vigencia:'2020-2030'};
 function evidence():IneEvidence{return {original:{values:{...identity},confidence:Object.fromEntries(identityKeys.map(k=>[k,95]))},processed:{values:{...identity},confidence:Object.fromEntries(identityKeys.map(k=>[k,96]))},warnings:[]}}
@@ -82,4 +82,16 @@ test('El minimo de 75 exige ambas lecturas y conserva las demas validaciones',()
  assert.equal(evaluateIne(identity,mismatch,false,2026).outcome,'review');
  assert.equal(evaluateIne(identity,proof,true,2026).outcome,'review');
  assert.equal(evaluateIne(identity,proof,false,2031).outcome,'review');
+});
+
+
+test('El reintento del digito exige una CURP completa y la caja del simbolo observado',()=>{
+ const raw=identity.curp.slice(0,17)+'S';
+ const symbols=raw.split('').map((text,index)=>({text,bbox:{x0:index*20,y0:10,x1:index*20+18,y1:40}}));
+ const page={text:raw,blocks:[{paragraphs:[{lines:[{words:[{symbols}]}]}]}]} as any;
+ assert.deepEqual(planCurpDigitRetry(page),{prefix:raw.slice(0,17),box:symbols[17].bbox});
+ assert.equal(planCurpDigitRetry({...page,text:identity.curp}),undefined);
+ assert.equal(planCurpDigitRetry({...page,blocks:[]}),undefined);
+ assert.equal(planCurpDigitRetry({...page,text:'X'+raw}),undefined);
+ assert.equal(planCurpDigitRetry({...page,text:'INVALIDO'}),undefined);
 });

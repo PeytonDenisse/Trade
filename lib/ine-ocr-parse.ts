@@ -19,7 +19,8 @@ export function extractIneZoneCandidates(zone:IneZone,first:string,second:string
       return value?{values:{fechaNacimiento:value},status:{fechaNacimiento:'Revisar'}}:{values:{},status:{}};
     }
     const heading=zone==='curp'?'CURP':'DOMICILIO';
-    return extractIneCandidates(new RegExp('^'+heading+'\\b','i').test(text.trim())?text:heading+'\n'+text);
+    const pattern=zone==='curp'?/^CURP\b/i:/^DOMICILI?O\b/i;
+    return extractIneCandidates(pattern.test(text.trim())?text:heading+'\n'+text);
   }
   const a=parse(first),b=parse(second),out:IneOcrResult={values:{},status:{}};
   const fields:(keyof IneIdentity)[]=zone==='domicilio'?['calleNumero','colonia','codigoPostal','municipio','estado']:[zone];
@@ -36,8 +37,8 @@ const CURP = /^[A-ZÑ&][AEIOUX][A-ZÑ&]{2}\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 const tidy = (s: string) => s.replace(/\s+/g, ' ').replace(/^[\s:–—-]+|[\s:–—-]+$/g, '').trim();
 const label = (s: string) => fold(s).replace(/[.:]/g, '').replace(/\s+/g, ' ').trim();
-const otherFieldLabel = /\b(?:NOMBRES?|APELLIDO(?:\s+(?:PATERNO|MATERNO))?|FECHA(?:\s+DE)?\s+NACIMIENTO|SEXO|GENERO|INDIGENA|CURP|DOMICILIO|COLONIA|C\s*P|CODIGO\s+POSTAL|MUNICIPIO|ALCALDIA|ESTADO|VIGENCIA|VENCIMIENTO|CLAVE\s+DE\s+ELECTOR|ANO\s+DE\s+REGISTRO|SECCION)\b/u;
-const compactForeignLabel = /(?:GENERO|INDIGENA|SEXO|CURP|DOMICILIO|FECHADENACIMI|FECHANACIMI|VIGENCIA|SECCION|CLAVEDEELECTOR)/u;
+const otherFieldLabel = /\b(?:NOMBRES?|APELLIDO(?:\s+(?:PATERNO|MATERNO))?|FECHA(?:\s+DE)?\s+NACIMIENTO|SEXO|GENERO|INDIGENA|CURP|DOMICILI?O|COLONIA|C\s*P|CODIGO\s+POSTAL|MUNICIPIO|ALCALDIA|ESTADO|VIGENCIA|VENCIMIENTO|CLAVE\s+DE\s+ELECTOR|ANO\s+DE\s+REGISTRO|SECCION)\b/u;
+const compactForeignLabel = /(?:GENERO|INDIGENA|SEXO|CURP|DOMICILI?O|FECHADENACIMI|FECHANACIMI|VIGENCIA|SECCION|CLAVEDEELECTOR)/u;
 const birthHeading=/^FECHA\s*(?:DE\s*)?NACIMI(?:E(?:N(?:T(?:O)?)?)?)?\b\s*[:\-]?\s*/i;
 const containsLabel = (s: string) => {
   const normalized=label(s).replace(/[^A-Z0-9 ]/gu, ' ');
@@ -104,11 +105,17 @@ export function parseIneLocality(row:string):{municipio:string;estado:string}|un
 // rather than separate COLONIA, C.P., MUNICIPIO and ESTADO labels.
 function addressBlock(lines:string[],index:number,out:IneOcrResult){
   const rows:string[]=[];
-  const inline=tidy(lines[index].replace(/^DOMICILIO\s*[:\-]?\s*/i,''));
+  const inline=tidy(lines[index].replace(/^DOMICILI?O\s*[:\-]?\s*/i,''));
   if(inline&&!containsLabel(inline))rows.push(inline);
-  for(let i=index+1;i<Math.min(lines.length,index+5);i++){
+  for(let i=index+1;i<Math.min(lines.length,index+7);i++){
     if(/^(?:CURP|NOMBRES?|APELLIDO|SEXO|GENERO|FECHA|VIGENCIA|SECCION|CLAVE)\b/.test(label(lines[i])))break;
     rows.push(lines[i]);
+  }
+  // Ignore at most two non-numeric OCR noise rows only when a clearly
+  // prefixed street follows. A colony, locality or another field is not a street.
+  if(rows[0]&&!streetAddress(rows[0])){
+    const streetIndex=rows.findIndex((row,i)=>i>0&&i<=2&&/^(?:C\.?|CALLE|AV\.?|AVENIDA|BLVD\.?|BOULEVARD|CTO\.?|CIRCUITO|PRV\.?|PRIVADA|CERRADA|PROL\.?)\s+/iu.test(row)&&streetAddress(row));
+    if(streetIndex>0&&rows.slice(0,streetIndex).every(row=>!/[0-9]/.test(row)&&!containsLabel(row)&&!parseIneLocality(row)))rows.splice(0,streetIndex);
   }
   const hasStreet=!!rows[0]&&!/^(?:COL(?:ONIA)?\b|C\.?\s*P\.?\b|MUNICIPIO\b|ESTADO\b)/iu.test(rows[0])&&streetAddress(rows[0]);
   if(hasStreet)put(out,'calleNumero',rows[0],'Revisar');
@@ -212,7 +219,7 @@ export function extractIneCandidates(raw: string): IneOcrResult {
       const candidate = token && ocrCurp(token);
       if (candidate) put(out, 'curp', candidate, candidate===token?'Reconocido':'Revisar');
     }
-    else if (/^DOMICILIO\b/.test(key)) addressBlock(lines,i,out);
+    else if (/^DOMICILI?O\b/.test(key)) addressBlock(lines,i,out);
     else if (/^CALLE(?:\s+Y\s+NUMERO)?\b/.test(key)) put(out, 'calleNumero', value(/^CALLE(?:\s+Y\s+N[ÚU]MERO)?\s*[:\-]?\s*/i), 'Revisar');
     else if (/^COLONIA\b/.test(key)) put(out, 'colonia', value(/^COLONIA\s*[:\-]?\s*/i), 'Revisar');
     else if (/^C\.?P\.?\b|^CODIGO\s+POSTAL\b/.test(key)) {

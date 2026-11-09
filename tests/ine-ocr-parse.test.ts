@@ -445,3 +445,32 @@ test('los recortes siguen la fila detectada sin incluir nacimiento ni la columna
  assert.ok(birth.left*1500<=500);assert.ok((birth.left+birth.width)*1500>=660);
  assert.ok((birth.left+birth.width)*1500<850);assert.ok((birth.top+birth.height)*948>=884);
 });
+
+
+test('un nombre corto no incluye letras lejanas del fondo ni corta nombres compuestos',()=>{
+ for(const compound of [false,true]){
+  const blocks=syntheticBlocks([
+   [{text:'NOMBRE',confidence:96,x0:500,y0:200,x1:640,y1:230}],
+   [{text:'PEREZ',confidence:95,x0:500,y0:245,x1:620,y1:275}],
+   [{text:'LOPEZ',confidence:95,x0:500,y0:285,x1:620,y1:315}],
+   [{text:'ANA',confidence:95,x0:500,y0:325,x1:570,y1:355},...(compound?[{text:'MARIA',confidence:40,x0:580,y0:325,x1:690,y1:355}]:[]),{text:'I',confidence:90,x0:780,y0:325,x1:790,y1:355}],
+  ]);
+  const value=planIneScans(blocks,1600,1024).find(scan=>scan.field==='nombres')!.value;
+  assert.ok(value.left*1600<500);
+  assert.ok((value.left+value.width)*1600>=(compound?690:570));
+  assert.ok((value.left+value.width)*1600<780);
+ }
+});
+
+
+test('domicilio admite su etiqueta con una letra omitida y ruido no numerico antes de la calle',()=>{
+ const street='C CALLE FICTICIA 10';
+ for(const heading of ['DOMICILIO','DOMICILO']){
+  const input=heading+'\nFIGURA DEL FONDO\n'+street+'\nCOL CENTRO 06000\nCUAUHTEMOC, CDMX';
+  const parsed=extractIneCandidates(input);
+  assert.equal(parsed.values.calleNumero,street);assert.equal(parsed.values.colonia,'CENTRO');
+  assert.equal(parsed.values.municipio,'CUAUHTEMOC');
+  assert.equal(extractIneZoneCandidates('domicilio',input,input).values.calleNumero,street);
+ }
+ for(const input of ['DOMICILIO\nCOL CENTRO 06000\nCUAUHTEMOC, CDMX','DOMICILIO\nSECCION 123\nC CALLE FICTICIA 10','DOMICILIO\nCURP\nC CALLE FICTICIA 10'])assert.equal(extractIneCandidates(input).values.calleNumero,undefined);
+});

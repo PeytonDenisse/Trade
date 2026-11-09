@@ -52,12 +52,20 @@ function Queue({deferred=false,failure=false,legacy=false}:{deferred?:boolean;fa
 }
 function Capture(){const [value,setValue]=useState(emptyIneDraft),[document,setDocument]=useState(''),[confirmed,setConfirmed]=useState(false);return <IneIdentityCapture value={value} onChange={setValue} documentId={document} onUploadDocument={async()=>{state.uploads++;return 'adjunto'}} onDocumentAttached={setDocument} confirmed={confirmed} onConfirmed={setConfirmed} errors={{}} showRequired={false}/>}
 (window as any).harness={
- recoverLabels:async(withLabels:boolean)=>{
-  const file=await card();
-  const rows=withLabels?[[{text:'CURP',confidence:96,bbox:{x0:20,y0:30,x1:150,y1:85}}],[{text:'FECHA',confidence:96,bbox:{x0:20,y0:210,x1:170,y1:265}},{text:'DE',confidence:96,bbox:{x0:180,y0:210,x1:230,y1:265}},{text:'NACIMIENTO',confidence:96,bbox:{x0:240,y0:210,x1:550,y1:265}}]]:[];
-  const worker={setParameters:async()=>{},recognize:async()=>({data:{blocks:[{paragraphs:[{lines:rows.map(words=>({words}))}]}]}})};
+ verifyStreetHeading:async(confirm:boolean)=>{
+  const file=await card();let mode='11';
+  const worker={setParameters:async(parameters:any)=>{mode=parameters.tessedit_pageseg_mode||mode},recognize:async()=>mode==='7'
+   ?{data:{text:confirm?'DOMICILIO':'DOMINIO',confidence:94,blocks:[{paragraphs:[{lines:[{words:[{text:confirm?'DOMICILIO':'DOMINIO',confidence:94,bbox:{x0:10,y0:10,x1:260,y1:60}}]}]}]}]}}
+   :{data:{text:'DOMICILO',blocks:[{paragraphs:[{lines:[{words:[{text:'DOMICILO',confidence:60,bbox:{x0:190,y0:356,x1:459,y1:497}}]}]}]}]}}};
   const blocks=await recoverIneCriticalBlocks(worker as any,file,[],()=>false);
-  return planIneScans(blocks,2000,1260).map(scan=>scan.field).filter(field=>field==='curp'||field==='fechaNacimiento');
+  return planIneScans(blocks,2000,1260).some(scan=>scan.field==='calleNumero');
+ },
+ recoverLabels:async(withLabels:boolean,withExisting=false)=>{
+  const file=await card();
+  const rows=withLabels?[[{text:'CURP',confidence:96,bbox:{x0:20,y0:30,x1:150,y1:85}}],[{text:'FECHA',confidence:96,bbox:{x0:20,y0:210,x1:170,y1:265}},{text:'DE',confidence:96,bbox:{x0:180,y0:210,x1:230,y1:265}},{text:'NACIMIENTO',confidence:96,bbox:{x0:240,y0:210,x1:550,y1:265}}],[{text:'VIGENCIA',confidence:96,bbox:{x0:1000,y0:210,x1:1200,y1:265}}]]:[];
+  const worker={setParameters:async()=>{},recognize:async()=>({data:{blocks:[{paragraphs:[{lines:rows.map(words=>({words}))}]}]}})};
+  const blocks=await recoverIneCriticalBlocks(worker as any,file,withExisting?[{paragraphs:[{lines:rows.slice(0,2).map(words=>({words}))}]}] as any:[],()=>false);
+  return planIneScans(blocks,2000,1260).map(scan=>scan.field).filter(field=>field==='curp'||field==='fechaNacimiento'||field==='vigencia');
  },
  cropConfidence:async()=>{
   const file=await card();
