@@ -8,6 +8,7 @@ const emptyEvidence:()=>IneEvidence=()=>({original:{values:{},confidence:{}},pro
 export function AutomaticIneReview({api,items,onItems,makeReader=createIneReader}:{api:Api;items:any[];onItems:(items:any[])=>void;makeReader?:()=>IneReader}){
  const [running,setRunning]=useState(false),[message,setMessage]=useState('');
  const [counts,setCounts]=useState({approved:0,review:0,errors:0});
+ const [lastDecision,setLastDecision]=useState('');
  const generation=useRef(0),reader=useRef<IneReader|null>(null),controller=useRef<AbortController|null>(null),active=useRef(false),mounted=useRef(true),wake=useRef<(()=>void)|null>(null);
  const current=useRef(items);current.current=items;
  function cancel(){generation.current++;active.current=false;controller.current?.abort();wake.current?.();wake.current=null;void reader.current?.close();reader.current=null}
@@ -15,7 +16,7 @@ export function AutomaticIneReview({api,items,onItems,makeReader=createIneReader
  function pause(){cancel();setRunning(false);setMessage('Revisión pausada. Las decisiones guardadas se conservan.')}
  async function start(retry=false){
   if(active.current)return;
-  active.current=true;setRunning(true);setCounts({approved:0,review:0,errors:0});
+  active.current=true;setRunning(true);setCounts({approved:0,review:0,errors:0});setLastDecision('');
   const version=++generation.current,signalController=new AbortController();controller.current=signalController;
   let engine=makeReader();reader.current=engine;
   const retryIds=new Set(retry?current.current.map(p=>p.id):[]),seen=new Set<string>();
@@ -46,13 +47,14 @@ export function AutomaticIneReview({api,items,onItems,makeReader=createIneReader
      const result=await api('admin/provider-analysis',{id:next.id,document:next.document,runId:crypto.randomUUID(),evidence},{signal:signalController.signal});
      if(!valid())break;
      setCounts(n=>({...n,[result.approved?'approved':'review']:n[result.approved?'approved':'review']+1}));
+     setLastDecision(result.approved?`${next.name}: registro aprobado automáticamente.`:`${next.name}: requiere revisión manual.`);
     }catch(e){if(!valid())break;setCounts(n=>({...n,errors:n.errors+1}));setMessage(e instanceof Error?e.message:'No se pudo guardar la revisión.')}
    }
   }catch(e){if(valid()){setMessage(e instanceof Error?e.message:'No se pudo cargar la cola.');setCounts(n=>({...n,errors:n.errors+1}))}}
   finally{await engine.close();if(valid()){active.current=false;setRunning(false)}if(reader.current===engine)reader.current=null}
  }
- return <section className="automatic-ine-review" aria-label="Revisión automática de identificaciones"><h3>Revisión automática local</h3><p>Trade compara el documento con los datos declarados y aprueba solo los casos claros. Las observaciones quedan pendientes; no se rechaza a nadie por un fallo del OCR. Funciona mientras esta sección esté abierta y la revisión esté iniciada.</p>
+ return <section className="automatic-ine-review" aria-label="Revisión automática de identificaciones"><h3>Revisión automática local</h3><p>Al iniciar la revisión, Trade aprueba cada registro sin otro clic cuando tres campos distintos coinciden con los datos declarados y ambas lecturas alcanzan al menos 80 %. Las contradicciones y los casos insuficientes quedan pendientes; no se rechaza a nadie por un fallo del OCR. Funciona mientras esta sección esté abierta y la revisión esté iniciada.</p>
  <div className="admin-actions"><button className="primary" type="button" disabled={running} onClick={()=>void start()}>Iniciar revisión automática</button><button className="secondary" type="button" disabled={!running} onClick={pause}>Pausar</button><button className="secondary" type="button" disabled={running} onClick={()=>void start(true)}>Reanalizar observaciones</button></div>
- <p role="status">{message}</p><p>Aprobados: {counts.approved} · Para revisión: {counts.review} · Errores o registros cambiados: {counts.errors}</p><small>Lectura y validación interna; no certifica la autenticidad de la INE.</small>
+ <p role="status">{message}</p>{lastDecision&&<p role="status">{lastDecision}</p>}<p>Aprobados: {counts.approved} · Para revisión: {counts.review} · Errores o registros cambiados: {counts.errors}</p><small>Lectura y validación interna; no certifica la autenticidad de la INE.</small>
  </section>;
 }

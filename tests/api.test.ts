@@ -11,7 +11,7 @@ import {preparePresentation,presentationIds} from '../lib/presentation-data';
 import {serviceLocation,directionsUrl} from '../lib/service-location';
 import {identityKeys,INE_ANALYSIS_VERSION} from '../lib/ine-analysis';
 import {processProviderReview} from '../lib/provider-review-jobs';
-async function fixture(){const server=await MongoMemoryReplSet.create({replSet:{count:1}});const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
+async function fixture(){const server=await MongoMemoryReplSet.create({replSet:{count:1},instanceOpts:[{launchTimeout:30000}]});const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
 const records:any[]=[];
 async function request(env:any,path:string,data?:any,cookie='',expected=200,extra:any={}){const headers:any={...extra};if(cookie)headers.cookie=cookie;let body:any;if(data instanceof FormData)body=data;else if(data!==undefined){body=JSON.stringify(data);headers['content-type']='application/json'}const r=await handle(new Request('https://trade.test/api/'+path,{method:data===undefined?'GET':'POST',headers,body}),env);const result=await r.json();assert.equal(r.status,expected,`${path}: ${JSON.stringify(result)}`);return {data:result as any,cookie:r.headers.get('set-cookie')?.split(';')[0]||cookie}}
 const credentials=(name:string)=>({name,email:name+'@example.test',password:'Test-password-unique-42'});
@@ -45,7 +45,9 @@ test('Prueba al enviar: interruptor, cola confiable, fallos, concurrencia y regr
  assert.deepEqual(Object.keys(messages.at(-1)!),['job']);
  assert.equal((await request(env,'me',undefined,clear.session.cookie)).data.application.automaticReview.state,'queued');
  const proof=(values:any,confidence=96)=>({original:{values,confidence:Object.fromEntries(identityKeys.map(k=>[k,confidence]))},processed:{values,confidence:Object.fromEntries(identityKeys.map(k=>[k,confidence]))},warnings:[]});
- const accepted=await processProviderReview(db,clear.job!,async file=>{assert.ok(file.bytes.length);return proof(clear.declared,75)});
+ const threeProof=proof(clear.declared,79);
+ for(const field of ['nombres','apellidoPaterno','sexo'] as const){threeProof.original.confidence[field]=80;threeProof.processed.confidence[field]=80}
+ const accepted=await processProviderReview(db,clear.job!,async file=>{assert.ok(file.bytes.length);return threeProof});
  assert.equal(accepted.approved,true);assert.equal((await db.collection('users').findOne({id:clear.uid}))?.role,'proveedor');
  assert.equal((await db.collection('audit_log').findOne({target:clear.uid,action:'provider.approve'}))?.actor,'system:provider-review');
  assert.equal((await processProviderReview(db,clear.job!,async()=>{throw Error('No debe repetir')})).state,'ignored');
