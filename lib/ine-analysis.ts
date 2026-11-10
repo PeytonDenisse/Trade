@@ -1,8 +1,11 @@
 import {validateIneIdentity,type IneIdentity} from './ine-identity';
+import {evaluateInePreliminary} from './ine-preliminary';
 
 // Shared by the form and the server; agreement alone never raises this score.
 export const INE_MIN_CONFIDENCE=75;
-export const INE_ANALYSIS_VERSION='ine-local-v1';
+// Pending records analyzed under the previous all-critical-fields rule are
+// eligible for one fresh review when the administration queue starts.
+export const INE_ANALYSIS_VERSION='ine-local-v2-three-fields-80';
 export const INE_ENGINE_VERSION='tesseract-7/opencv-4.12/field-confidence-2/field-crops-5';
 export const identityKeys=(['nombres','apellidoPaterno','apellidoMaterno','fechaNacimiento','sexo','curp','calleNumero','colonia','codigoPostal','municipio','estado','vigencia'] as const);
 export const criticalKeys:readonly (keyof IneIdentity)[]=['nombres','apellidoPaterno','apellidoMaterno','curp','fechaNacimiento','vigencia'];
@@ -11,7 +14,6 @@ export type IneEvidence={original:IneReading;processed:IneReading;warnings:strin
 export type IneFieldEvidence={field:keyof IneIdentity;declared:string;original:string;processed:string;confidenceOriginal:number;confidenceProcessed:number;issues:string[]};
 export type IneAnalysis={version:string;engine:string;document:string;runId:string;at:string;by:string;outcome:'approved'|'review';reasons:string[];fields:IneFieldEvidence[]};
 const allowedWarnings=new Set(['low-resolution','blur','dark','low-contrast','overexposed']);
-const warningLabels:Record<string,string>={'low-resolution':'resolución insuficiente',blur:'imagen borrosa',dark:'poca luz','low-contrast':'poco contraste',overexposed:'exceso de luz'};
 const fieldLabels:Record<keyof IneIdentity,string>={nombres:'Nombre(s)',apellidoPaterno:'Apellido paterno',apellidoMaterno:'Apellido materno',fechaNacimiento:'Fecha de nacimiento',sexo:'Sexo o género',curp:'CURP',calleNumero:'Calle y número',colonia:'Colonia',codigoPostal:'Código postal',municipio:'Municipio',estado:'Estado',vigencia:'Vigencia'};
 export function normalizeIneValue(value:string){return value.normalize('NFD').replace(/n\u0303/gi,'Ñ').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim()}
 
@@ -37,9 +39,12 @@ export function evaluateIne(identity:unknown,evidence:IneEvidence,duplicate:bool
  const reasons:string[]=[];let valid:IneIdentity|undefined;
  try{valid=validateIneIdentity(identity)}catch{reasons.push('Los datos declarados están incompletos o no son coherentes.')}
  if(evidence.failure)reasons.push('No se pudo completar la lectura. Solicita una nueva captura o revisa el documento.');
- if(evidence.warnings.length)reasons.push('La imagen presenta problemas de calidad: '+evidence.warnings.map(w=>warningLabels[w]).join(', ')+'.');
+ // Image warnings remain visible in field evidence; three independently clear
+ // fields can still pass even if another part of the image is blurred.
  if(duplicate)reasons.push('Hay otro registro con la misma CURP; requiere revisión manual.');
  const source=(valid||identity||{}) as Partial<IneIdentity>;
+ const preliminary=evaluateInePreliminary(source,evidence);
+ if(preliminary.status!=='Validación preliminar aprobada')reasons.push(preliminary.conflicts.length?'Hay diferencias en: '+preliminary.conflicts.map(field=>fieldLabels[field]).join(', ')+'.':'Menos de tres campos distintos coinciden con ambas lecturas al 80 % o más.');
  const fields:IneFieldEvidence[]=identityKeys.map(field=>{
   const declared=String(source[field]||''),a=String(evidence.original.values[field]||''),b=String(evidence.processed.values[field]||'');
   const ca=evidence.original.confidence[field]||0,cb=evidence.processed.confidence[field]||0,issues:string[]=[];
@@ -50,7 +55,8 @@ export function evaluateIne(identity:unknown,evidence:IneEvidence,duplicate:bool
    if(a&&b&&normalizeIneValue(a)!==normalizeIneValue(b))issues.push('Las lecturas no coinciden.');
    if((a&&normalizeIneValue(a)!==normalizeIneValue(declared))||(b&&normalizeIneValue(b)!==normalizeIneValue(declared)))issues.push('No coincide con el dato declarado.');
   }else if((a&&normalizeIneValue(a)!==normalizeIneValue(declared))||(b&&normalizeIneValue(b)!==normalizeIneValue(declared)))issues.push('Hay una diferencia que debe revisar administración.');
-  if(issues.length)reasons.push(`${fieldLabels[field]}: ${issues.join(' ')}`);
+  // Missing or lower-confidence fields are reported for inspection, but no
+  // longer veto three other clear matches. Contradictions are handled above.
   return {field,declared,original:a,processed:b,confidenceOriginal:ca,confidenceProcessed:cb,issues};
  });
  const years=String(source.vigencia||'').match(/\d{4}/g)?.map(Number)||[];

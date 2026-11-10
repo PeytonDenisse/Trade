@@ -11,7 +11,7 @@ test('La CURP enfocada conserva su confianza real y puede sugerirse sin aprobars
  assert.deepEqual(found,{value:identity.curp,confidence:70});
  const proof=evidence();proof.original.confidence.curp=found!.confidence;proof.processed.confidence.curp=found!.confidence;
  assert.equal(mergeIneReadings(proof.original,proof.processed).status.curp,'Revisar');
- assert.equal(evaluateIne(identity,proof,false,2026).outcome,'review');
+ assert.equal(evaluateIne(identity,proof,false,2026).outcome,'approved');
  assert.equal(selectFocusedCurp({text:'NO LEGIBLE',confidence:99},{text:'NO LEGIBLE',confidence:99}),undefined);
  assert.equal(selectFocusedCurp({text:identity.curp,confidence:24},{text:identity.curp,confidence:99}),undefined);
  assert.equal(selectFocusedCurp({text:identity.curp,confidence:99},{text:'GODE561231HDFLRS09',confidence:99}),undefined);
@@ -29,10 +29,10 @@ test('El diagnóstico diferencia etiquetas ausentes y datos no extraídos sin re
  assert.equal(JSON.stringify(report).includes('PRIVADA'),false);
  assert.equal(diagnoseIneReading('',{values:{curp:identity.curp},confidence:{}}).curp,'extracted');
 });
-test('Solo aprueba dos lecturas claras y coherentes; los casos dudosos conservan motivos',()=>{
+test('Aprueba tres coincidencias claras; contradicciones y controles básicos conservan revisión',()=>{
  assert.equal(evaluateIne(identity,evidence(),false,2026).outcome,'approved');
- for(const change of [(e:IneEvidence)=>{e.original.confidence.curp=74},(e:IneEvidence)=>{delete e.processed.values.nombres},(e:IneEvidence)=>{e.processed.values.nombres='OTRO'},(e:IneEvidence)=>{e.original.values.colonia='OTRA'},(e:IneEvidence)=>{e.warnings=['blur']},(e:IneEvidence)=>{e.failure='processing-error'}]){
-  const e=evidence();change(e);const result=evaluateIne(identity,e,false,2026);assert.equal(result.outcome,'review');assert.ok(result.reasons.length);
+ for(const [change,expected] of [[(e:IneEvidence)=>{e.original.confidence.curp=74},'approved'],[(e:IneEvidence)=>{delete e.processed.values.nombres},'approved'],[(e:IneEvidence)=>{e.processed.values.nombres='OTRO'},'review'],[(e:IneEvidence)=>{e.original.values.colonia='OTRA'},'review'],[(e:IneEvidence)=>{e.warnings=['blur']},'approved'],[(e:IneEvidence)=>{e.failure='processing-error'},'review']] as const){
+  const e=evidence();change(e);const result=evaluateIne(identity,e,false,2026);assert.equal(result.outcome,expected);if(expected==='review')assert.ok(result.reasons.length);
  }
  assert.equal(evaluateIne(identity,evidence(),true,2026).outcome,'review');
  assert.equal(evaluateIne(identity,evidence(),false,2031).outcome,'review');
@@ -68,20 +68,27 @@ test('Los reintentos de CURP conservan el mejor par medido y bloquean contradicc
 });
 
 
-test('El minimo de 75 exige ambas lecturas y conserva las demas validaciones',()=>{
+test('El umbral de 80 requiere tres campos y conserva los demás controles',()=>{
  const proof=evidence();
- for(const field of identityKeys){proof.original.confidence[field]=75;proof.processed.confidence[field]=75}
+ for(const field of identityKeys){proof.original.confidence[field]=80;proof.processed.confidence[field]=80}
  assert.equal(evaluateIne(identity,proof,false,2026).outcome,'approved');
  assert.equal(mergeIneReadings(proof.original,proof.processed).status.curp,'Reconocido');
  for(const side of ['original','processed'] as const){
-  const below=structuredClone(proof);below[side].confidence.curp=74.99;
-  assert.equal(evaluateIne(identity,below,false,2026).outcome,'review');
-  assert.equal(mergeIneReadings(below.original,below.processed).status.curp,'Revisar');
+  const below=structuredClone(proof);below[side].confidence.curp=79;
+  assert.equal(evaluateIne(identity,below,false,2026).outcome,'approved');
+  assert.equal(mergeIneReadings(below.original,below.processed).status.curp,'Reconocido');
  }
  const mismatch=structuredClone(proof);mismatch.processed.values.curp='GODE561231HDFLRS09';
  assert.equal(evaluateIne(identity,mismatch,false,2026).outcome,'review');
  assert.equal(evaluateIne(identity,proof,true,2026).outcome,'review');
  assert.equal(evaluateIne(identity,proof,false,2031).outcome,'review');
+});
+test('La decisión del servidor aprueba con exactamente tres campos al 80 % sin esperar aprobación manual',()=>{
+ const proof=evidence();for(const field of identityKeys){proof.original.confidence[field]=0;proof.processed.confidence[field]=0}
+ for(const field of ['nombres','apellidoPaterno','sexo'] as const){proof.original.confidence[field]=80;proof.processed.confidence[field]=80}
+ assert.equal(evaluateIne(identity,proof,false,2026).outcome,'approved');
+ proof.processed.confidence.sexo=79;
+ assert.equal(evaluateIne(identity,proof,false,2026).outcome,'review');
 });
 
 

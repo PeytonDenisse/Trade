@@ -2,9 +2,17 @@
 
 ## Flujo
 
-El solicitante puede tomar una foto con la cámara, elegir una imagen de su dispositivo o capturar los datos manualmente. El formulario manual funciona sin cámara ni OCR, aunque la fotografía del INE sigue siendo obligatoria para enviar la solicitud. Se aceptan PNG, JPG y WebP de hasta 5 MB.
+El registro de proveedores usa «Subir foto desde mi dispositivo» como entrada obligatoria para el INE. Después de la lectura local, la persona revisa los datos en los apartados del modal. Puede corregirlos manualmente. Al seleccionar otra imagen, la evidencia de la lectura anterior deja de contar; los datos del formulario solo se reemplazan tras su confirmación explícita.
 
-Al confirmar una foto o elegir un archivo, Trade lo adjunta a su almacenamiento privado y después intenta leerlo con OCR en el navegador. Los datos detectados rellenan campos vacíos. Si ya hay datos, la persona elige entre conservarlos y completar solo los vacíos o usar los nuevos resultados. Todos los campos pueden corregirse y requieren confirmación antes del envío. Si falla la cámara o el OCR, se puede continuar con la galería o la captura manual.
+## Validación automática preliminar
+
+Esta validación es informativa y se recalcula al corregir un campo o leer una imagen nueva. Los campos elegibles son nombre(s), apellido paterno, apellido materno, fecha de nacimiento, sexo o género, CURP, calle y número, colonia, código postal y vigencia. Municipio y estado se excluyen porque pueden derivarse de abreviaturas del domicilio. Cada campo cuenta una sola vez únicamente si está declarado, aparece en **ambas lecturas independientes**, las dos lecturas y el dato declarado coinciden tras normalización, y **cada confianza es al menos 80 %**. Las dos lecturas de un mismo campo no se cuentan como dos coincidencias. Una diferencia entre lecturas o con lo declarado impide el resultado positivo; una lectura ausente o inferior al umbral queda para revisión.
+
+El resultado «Validación preliminar aprobada» requiere al menos tres campos distintos coincidentes y ninguna contradicción. El indicador del formulario no cambia permisos porque sus lecturas locales pueden manipularse. Tras enviar el registro, la revisión automática del servidor vuelve a leer el documento privado y aplica el mismo umbral. Si la cola de revisión automática está activada y el documento, la cuenta y la CURP duplicada pasan sus controles, la decisión se guarda como «Aprobada» y se asigna el rol de proveedor sin un clic administrativo. Si la cola no está configurada o activada, el registro permanece «Pendiente» para revisión manual. Ninguno de estos resultados certifica la autenticidad del documento ni la identidad.
+
+El solicitante elige una imagen de su dispositivo y puede corregir los datos manualmente. La fotografía del INE es obligatoria para enviar la solicitud. Se aceptan PNG, JPG y WebP de hasta 5 MB.
+
+Al confirmar el archivo, Trade lo adjunta a su almacenamiento privado y después intenta leerlo con OCR en el navegador. Los datos detectados rellenan campos vacíos. Si ya hay datos, la persona elige entre conservarlos y completar solo los vacíos o sustituirlos tras confirmar la pérdida de correcciones manuales. Todos los campos pueden corregirse y requieren confirmación antes del envío. Si falla el OCR, se pueden completar manualmente los datos mientras la imagen sigue adjunta.
 
 Cuando la lectura general no detecta CURP, fecha de nacimiento o vigencia, el navegador hace una lectura adicional de las zonas donde suelen aparecer. Solo acepta un valor si también reconoce la etiqueta correspondiente y el formato del dato es válido; estos resultados se marcan «Revisar». Las variaciones de credencial o encuadre pueden dejar campos pendientes.
 
@@ -18,11 +26,9 @@ El worker y el núcleo se copiaron de las dependencias instaladas de `tesseract.
 
 **Límite de privacidad:** la fotografía completa se sube a Trade antes del OCR y puede mostrar la clave de elector u otros datos impresos, aunque no existan como campos estructurados. La implementación actual no oculta esas zonas de la imagen ni borra automáticamente un documento adjuntado si se abandona el formulario. Se debe definir la retención y el aviso de privacidad aplicables antes de usar este flujo en producción.
 
-## Límites de reconocimiento y cámara
+## Límites de reconocimiento
 
 «Reconocido» significa que el formato detectado pasó una comprobación estructural; no acredita autenticidad del INE, de la CURP ni de la persona. «Revisar» exige confirmación humana y «Pendiente» requiere captura manual. Los formatos de credencial varían; poca luz, reflejos, desenfoque o texto ilegible pueden dejar campos vacíos o incorrectos. El sistema no inventa datos faltantes ni infiere el sexo por la imagen o el nombre.
-
-La cámara solicita permiso y requiere un contexto seguro: HTTPS en producción o `localhost` durante desarrollo. El navegador puede denegar el permiso o no disponer de una cámara compatible. Al cerrar la captura se detienen sus pistas de video. [MDN documenta los requisitos de seguridad y permiso de `getUserMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia).
 
 ## Decisión técnica y disposición de campos
 

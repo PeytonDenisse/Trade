@@ -5,7 +5,7 @@ import {AutomaticIneReview} from '../../components/admin/automatic-ine-review';
 import {IneIdentityCapture} from '../../components/trade/ine-identity-capture';
 import {IneImageEditor} from '../../components/trade/ine-image-editor';
 import {createIneReader} from '../../lib/ine-reader';
-import {emptyIneDraft} from '../../lib/ine-identity';
+import {emptyIneDraft,type IneDraft} from '../../lib/ine-identity';
 import {identityKeys,normalizeIneValue,evaluateIne} from '../../lib/ine-analysis';
 import '../../app/globals.css';
 import '../../app/mockup.css';
@@ -43,14 +43,15 @@ async function card(variant='clear'){
  const blob=await new Promise<Blob>(resolve=>output.toBlob(b=>resolve(b!),'image/png'));return new File([blob],'sintetico.png',{type:'image/png'});
 }
 const root=createRoot(document.getElementById('root')!);const state={posts:[] as any[],closed:0,uploads:0,release:null as null|(()=>void)};
-function Queue({deferred=false,failure=false,legacy=false}:{deferred?:boolean;failure?:boolean;legacy?:boolean}){
- const [items,setItems]=useState<any[]>([{id:'fixture',name:'Registro sintético',status:'Pendiente',analysis_eligible:!legacy,identity:synthetic,document:'documento-fixture'}]);
+function Queue({deferred=false,failure=false,legacy=false,previous=false}:{deferred?:boolean;failure?:boolean;legacy?:boolean;previous?:boolean}){
+ const [items,setItems]=useState<any[]>([{id:'fixture',name:'Registro sintético',status:'Pendiente',analysis_eligible:!legacy,identity:synthetic,document:'documento-fixture',...(previous?{analysis:{version:'ine-local-v1',document:'documento-fixture'}}:{})}]);
  const reference=React.useRef(items);reference.current=items;
  const makeReader=()=>({readZone:async()=>({values:{},status:{}}),read:async()=>{if(failure)throw Error('Fallo simulado');if(deferred)await new Promise<void>(resolve=>{state.release=resolve});return {evidence:{original:{values:synthetic,confidence:{}},processed:{values:synthetic,confidence:{}},warnings:[]},candidates:{values:{},status:{}}}},close:async()=>{state.closed++;state.release?.()}});
  const api=async(path:string,data?:any)=>{if(path==='applications')return reference.current;if(path==='admin/provider-analysis'){state.posts.push(data);setItems([]);reference.current=[];return {approved:!data.evidence.failure}}throw Error('Ruta inesperada')};
  return <AutomaticIneReview api={api} items={items} onItems={setItems} makeReader={makeReader}/>;
 }
 function Capture(){const [value,setValue]=useState(emptyIneDraft),[document,setDocument]=useState(''),[confirmed,setConfirmed]=useState(false);return <IneIdentityCapture value={value} onChange={setValue} documentId={document} onUploadDocument={async()=>{state.uploads++;return 'adjunto'}} onDocumentAttached={setDocument} confirmed={confirmed} onConfirmed={setConfirmed} errors={{}} showRequired={false}/>}
+function PreliminaryCapture(){const [value,setValue]=useState<IneDraft>({...emptyIneDraft,nombres:synthetic.nombres,apellidoPaterno:synthetic.apellidoPaterno,sexo:synthetic.sexo}),[confirmed,setConfirmed]=useState(false);const values={nombres:synthetic.nombres,apellidoPaterno:synthetic.apellidoPaterno,sexo:synthetic.sexo};const evidence={original:{values,confidence:{nombres:85,apellidoPaterno:90,sexo:80}},processed:{values,confidence:{nombres:86,apellidoPaterno:91,sexo:82}},warnings:[]};return <IneIdentityCapture value={value} onChange={setValue} documentId="adjunto" onUploadDocument={async()=>"adjunto"} onDocumentAttached={()=>{}} confirmed={confirmed} onConfirmed={setConfirmed} errors={{}} showRequired={false} evidence={evidence}/>}
 (window as any).harness={
  verifyStreetHeading:async(confirm:boolean)=>{
   const file=await card();let mode='11';
@@ -81,7 +82,7 @@ function Capture(){const [value,setValue]=useState(emptyIneDraft),[document,setD
   const blob=await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b!),'image/png'));const reader=createIneReader();
   try{return await reader.readZone(new File([blob],'zona.png',{type:'image/png'}),zone)}finally{await reader.close()}
  },
- state,card,queue:(deferred=false,failure=false,legacy=false)=>{state.posts=[];state.closed=0;root.render(<Queue deferred={deferred} failure={failure} legacy={legacy}/>);},unmount:()=>root.render(<p>Otra sección</p>),capture:()=>root.render(<Capture/>),
+ state,card,queue:(deferred=false,failure=false,legacy=false,previous=false)=>{state.posts=[];state.closed=0;root.render(<Queue deferred={deferred} failure={failure} legacy={legacy} previous={previous}/>);},unmount:()=>root.render(<p>Otra sección</p>),capture:()=>root.render(<Capture/>),preliminary:()=>root.render(<PreliminaryCapture/>),
  editor:async()=>root.render(<IneImageEditor file={await card()} onUse={()=>{state.uploads++}} onCancel={()=>{}}/>),
  benchmark:async()=>{
   const reader=createIneReader(),scores=[];
