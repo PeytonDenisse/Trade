@@ -1,6 +1,8 @@
 import handler from "vinext/server/fetch-handler";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
+import { withDb } from "../db/mongo";
+import { drainFileDeletions } from "../lib/file-deletions";
 
 export default {
   fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
@@ -24,5 +26,9 @@ export default {
       };
     }
     return runWithConnectorBinding(binding, () => handler.fetch(request, env, ctx));
+  },
+  scheduled(_controller: ScheduledController, env: Cloudflare.Env, ctx: ExecutionContext) {
+    if (env.MONGODB_FILES === "true" || !env.BUCKET) return;
+    ctx.waitUntil(withDb(env, db => drainFileDeletions(db, env.BUCKET!)).then(() => undefined));
   },
 };

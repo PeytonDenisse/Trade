@@ -1,9 +1,10 @@
 'use client';
-import {useEffect,useMemo,useState} from 'react';
-import {ArrowDown,ArrowUp,ArrowUpDown,Search,X} from 'lucide-react';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {ArrowDown,ArrowUp,ArrowUpDown,Search,Trash2,X} from 'lucide-react';
 import {tradesOf} from '../../lib/rules';
 import {useConfirm,useToast} from '../feedback/feedback-provider';
 import {errorText,roleLabel,type Api} from './shared';
+import {DeletePersonDialog} from './delete-person-dialog';
 
 type Role='cliente'|'proveedor'|'admin';
 type Row={id:string;name:string;email:string;role:Role;status?:string;trade?:string;zone?:string;requests:number;active:boolean;providerActive:boolean};
@@ -32,11 +33,13 @@ const sorts:Record<SortKey,{label:string;modes:{label:string;cmp:(a:Row,b:Row)=>
 };
 
 // Personas: every account in one searchable table; the name opens the person's page.
-export function People({api,onPerson,onReview}:{api:Api;onPerson:(id:string)=>void;onReview:()=>void}){
+export function People({api,onPerson,onReview,me}:{api:Api;onPerson:(id:string)=>void;onReview:()=>void;me:string}){
   const confirm=useConfirm(),toast=useToast();
   const [people,setPeople]=useState<any[]|null>(null),[applications,setApplications]=useState<any[]>([]),[error,setError]=useState('');
   const [view,setView]=useState<View>(''),[query,setQuery]=useState(''),[busyId,setBusyId]=useState('');
   const [sort,setSort]=useState<{key:SortKey;mode:number}|null>(null);
+  const [deleteTarget,setDeleteTarget]=useState<Row|null>(null);
+  const summaryRef=useRef<HTMLSpanElement>(null);
   const load=async()=>{try{const [users,apps]=await Promise.all([api('users'),api('applications')]);setPeople(users);setApplications(apps)}catch(e:any){setError(e.message)}};
   useEffect(()=>{load()},[]);
   const cycle=(key:SortKey)=>setSort(current=>!current||current.key!==key?{key,mode:0}:current.mode+1<sorts[key].modes.length?{key,mode:current.mode+1}:null);
@@ -47,6 +50,8 @@ export function People({api,onPerson,onReview}:{api:Api;onPerson:(id:string)=>vo
   const current=views.find(v=>v.key===view)!;
   const shown=rows.filter(row=>current.match(row)&&(!needle||[row.name,row.email,row.trade,row.zone].some(t=>t?.toLowerCase().includes(needle))));
   const sorted=sort?[...shown].sort(sorts[sort.key].modes[sort.mode].cmp):shown;
+  const activeAdmins=rows.filter(row=>row.role==='admin'&&row.active).length;
+  const canDelete=(row:Row)=>row.id!==me&&(row.role!=='admin'||!row.active||activeAdmins>1);
   const clear=()=>{setView('');setQuery('')};
   async function toggle(row:Row){
     const answer=await confirm(row.active
@@ -56,12 +61,20 @@ export function People({api,onPerson,onReview}:{api:Api;onPerson:(id:string)=>vo
     setBusyId(row.id);
     try{await api('account-active',{id:row.id,active:!row.active,reason:answer.reason||undefined});toast(`${row.name}: cuenta ${row.active?'desactivada':'reactivada'}.`);await load()}catch(cause){toast(errorText(cause),'error')}finally{setBusyId('')}
   }
+  async function remove(row:{id:string;email:string}){
+    const result=await api('admin/user-delete',{id:row.id,email:row.email});
+    setPeople(current=>current?.filter(person=>person.id!==row.id)||[]);
+    setApplications(current=>current.filter(application=>application.id!==row.id));
+    setDeleteTarget(null);
+    window.setTimeout(()=>summaryRef.current?.focus(),0);
+    toast(result?.storageCleanupPending?'Usuario eliminado. La limpieza de archivos pendientes continuará.':'Usuario eliminado.');
+  }
   return <section className="people-directory" aria-label="Directorio de personas">
     <div className="people-filters">
       <label className="people-search"><Search size={18} aria-hidden="true"/><input type="search" aria-label="Buscar por nombre, correo, oficio o zona" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por nombre, correo, oficio o zona"/></label>
       <label>Mostrar<select value={view} onChange={e=>setView(e.target.value as View)}>{views.map(v=><option key={v.key} value={v.key}>{v.label} ({rows.filter(v.match).length})</option>)}</select></label>
     </div>
-    <div className="people-summary"><span role="status">Mostrando <strong>{shown.length}</strong> de {rows.length} personas</span>{(view||needle)&&<button type="button" className="text-button" onClick={clear}><X size={15}/> Limpiar filtros</button>}</div>
+    <div className="people-summary"><span ref={summaryRef} role="status" tabIndex={-1}>Mostrando <strong>{shown.length}</strong> de {rows.length} personas</span>{(view||needle)&&<button type="button" className="text-button" onClick={clear}><X size={15}/> Limpiar filtros</button>}</div>
     {shown.length?<div className="admin-table-wrap"><table className="admin-table people-table"><thead><tr>{(Object.keys(sorts) as SortKey[]).map(key=>{const active=sort?.key===key,mode=active?sorts[key].modes[sort!.mode]:null,next=active?sorts[key].modes[sort!.mode+1]:sorts[key].modes[0];const Icon=!active?ArrowUpDown:sort!.mode%2?ArrowUp:ArrowDown;return <th key={key} scope="col" aria-sort={active?(sort!.mode%2?'descending':'ascending'):'none'}><button type="button" className={active?'sort-button active':'sort-button'} onClick={()=>cycle(key)} title={next?`Ordenar: ${next.label}`:'Quitar orden'}>{sorts[key].label}<Icon size={14} aria-hidden="true"/></button>{mode&&<small className="sort-mode">{mode.label}</small>}</th>})}<th scope="col">Acciones</th></tr></thead><tbody>{sorted.map(row=><tr key={row.id} className={row.status==='Pendiente'?'is-pending':undefined}>
       <td data-label="Persona"><button type="button" className="person-cell" onClick={()=>onPerson(row.id)}><span className="person-initial" aria-hidden="true">{row.name.slice(0,1)}</span><span><strong>{row.name}</strong><small>{row.email}</small></span></button></td>
       <td data-label="Rol"><span className="role-badge" data-role={row.role}>{roleLabel[row.role]}</span>{!row.active&&<span className="status" data-status="Desactivada">Cuenta desactivada</span>}</td>
@@ -72,7 +85,9 @@ export function People({api,onPerson,onReview}:{api:Api;onPerson:(id:string)=>vo
         <button type="button" className="text-button" onClick={()=>onPerson(row.id)}>Ver ficha</button>
         {row.status==='Pendiente'&&<button type="button" className="primary small-action" onClick={onReview}>Revisar registro</button>}
         {row.role!=='admin'&&<button type="button" className={row.active?'text-button danger':'text-button'} disabled={!!busyId} onClick={()=>toggle(row)}>{row.active?'Desactivar cuenta':'Reactivar cuenta'}</button>}
+        {canDelete(row)&&<button type="button" className="text-button danger" disabled={!!busyId} onClick={()=>setDeleteTarget(row)}><Trash2 size={15} aria-hidden="true"/>Eliminar usuario</button>}
       </span>}</td>
     </tr>)}</tbody></table></div>:<div className="admin-empty"><Search size={34}/><h3>Nadie coincide</h3><p>Prueba con otra opción en «Mostrar» o borra la búsqueda.</p><button type="button" className="secondary" onClick={clear}>Limpiar filtros</button></div>}
+    {deleteTarget&&<DeletePersonDialog person={deleteTarget} onClose={()=>setDeleteTarget(null)} onDelete={remove}/>}
   </section>;
 }

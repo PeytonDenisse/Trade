@@ -38,7 +38,7 @@ export function AdminPortal({api,tab,personId,me,onTab,onPerson,onTradesChanged}
         <div className="admin-heading"><p className="eyebrow">ADMINISTRACIÓN · {current.group.toUpperCase()}</p><h1>{current.label}</h1><p>{current.intro}</p></div>
         {current.key==='tablero'&&<Dashboard api={api} onTab={onTab}/>}
         {current.key==='por-revisar'&&<ReviewQueue api={api} onPerson={onPerson}/>}
-        {current.key==='personas'&&<People api={api} onPerson={onPerson} onReview={()=>onTab('por-revisar')}/>}
+        {current.key==='personas'&&<People api={api} me={me} onPerson={onPerson} onReview={()=>onTab('por-revisar')}/>}
         {current.key==='moderacion'&&<Moderation api={api} onPerson={onPerson}/>}
         {current.key==='oficios'&&<TradesAdmin api={api} onChanged={onTradesChanged}/>}
         {current.key==='equipo'&&<Team api={api} me={me} onPerson={onPerson}/>}

@@ -20,6 +20,7 @@ delete config.vars.MONGODB_URI;
 delete config.vars.DEMO_ACCESS_CODE;
 config.d1_databases = [];
 config.r2_buckets = withoutImages ? [] : [{ binding: 'BUCKET', bucket_name: bucketName }];
+if(!withoutImages)config.triggers={...config.triggers,crons:['*/5 * * * *']};
 if(automaticReview){
  if(!withoutImages)throw Error('La prueba automática requiere --without-images para leer los documentos privados en MongoDB.');
  config.queues={...config.queues,producers:[...(config.queues?.producers||[]).filter(item=>item.binding!=='PROVIDER_REVIEW_QUEUE'),{binding:'PROVIDER_REVIEW_QUEUE',queue:'trade-provider-review-trial'}]};
