@@ -11,6 +11,7 @@ import {preparePresentation,presentationIds} from '../lib/presentation-data';
 import {serviceLocation,directionsUrl} from '../lib/service-location';
 import {identityKeys,INE_ANALYSIS_VERSION} from '../lib/ine-analysis';
 import {processProviderReview} from '../lib/provider-review-jobs';
+import {drainFileDeletions} from '../lib/file-deletions';
 async function fixture(){const server=await MongoMemoryReplSet.create({replSet:{count:1},instanceOpts:[{launchTimeout:30000}]});const client=await MongoClient.connect(server.getUri());const db=client.db('trade-test');await ensureCollections(db);return {db,env:{MONGO:db,MONGODB_FILES:'true'},close:async()=>{await client.close();await server.stop()}}}
 const records:any[]=[];
 async function request(env:any,path:string,data?:any,cookie='',expected=200,extra:any={}){const headers:any={...extra};if(cookie)headers.cookie=cookie;let body:any;if(data instanceof FormData)body=data;else if(data!==undefined){body=JSON.stringify(data);headers['content-type']='application/json'}const r=await handle(new Request('https://trade.test/api/'+path,{method:data===undefined?'GET':'POST',headers,body}),env);const result=await r.json();assert.equal(r.status,expected,`${path}: ${JSON.stringify(result)}`);return {data:result as any,cookie:r.headers.get('set-cookie')?.split(';')[0]||cookie}}
@@ -341,6 +342,239 @@ test('Administración: tablero, ficha de persona, motivos y bitácora',async(t)=
  assert.equal(card.history[1].detail,'Cuenta duplicada');assert.equal(card.history[0].actor_name,'jefa');
  await request(env,'admin/people/nadie',undefined,boss.cookie,404);
  summary=(await request(env,'admin/summary',undefined,boss.cookie)).data;assert.equal(summary.attention.registrations,0);assert.equal(summary.activity.length,5);
+});
+test('Eliminar usuario: permisos, confirmación, archivos y sesión',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const target=await request(env,'register',credentials('luis'));
+ const bossId=(await request(env,'me',undefined,boss.cookie)).data.user.id;
+ const targetId=(await request(env,'me',undefined,target.cookie)).data.user.id;
+ const photo=(await upload(env,target.cookie,'photo')).data.id,document=(await upload(env,target.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Plomería',photo,document,identity},target.cookie,201);
+ await db.collection('password_resets').insertOne({id:'reset-test',user_id:targetId,status:'Solicitada',requested:new Date().toISOString(),token_hash:null,expires:null,issued_by:null});
+ await db.collection('audit_log').insertOne({id:'audit-test',at:new Date().toISOString(),actor:bossId,actor_name:'jefa',action:'account.note',target:targetId,target_name:'luis',detail:'Correo de la persona'});
+ await request(env,'admin/user-delete',{id:targetId,email:'luis@example.test'},target.cookie,403);
+ await request(env,'admin/user-delete',{id:bossId,email:'jefa@example.test'},boss.cookie,403);
+ await request(env,'admin/user-delete',{id:'inexistente',email:'nadie@example.test'},boss.cookie,404);
+ await request(env,'admin/user-delete',{id:targetId,email:'errado@example.test'},boss.cookie,400);
+ assert.equal((await db.collection('users').findOne({id:targetId}))?.email,'luis@example.test');
+ await request(env,'admin/user-delete',{id:targetId,email:'luis@example.test'},boss.cookie);
+ const erased=await db.collection('users').findOne({id:targetId});
+ assert.equal(erased?.role,'eliminado');assert.equal(erased?.active,false);assert.notEqual(erased?.email,'luis@example.test');
+ assert.equal(await db.collection('providers').countDocuments({id:targetId}),0);
+ assert.equal(await db.collection('files').countDocuments({owner:targetId}),0);
+ assert.equal(await db.collection('file_objects').countDocuments({_id:{$in:[photo,document]}}),0);
+ assert.equal(await db.collection('sessions').countDocuments({user_id:targetId}),0);
+ assert.equal(await db.collection('password_resets').countDocuments({user_id:targetId}),0);
+ const oldAudit=await db.collection('audit_log').findOne({id:'audit-test'});assert.equal(oldAudit?.target_name,null);assert.equal(oldAudit?.detail,null);
+ assert.equal((await request(env,'me',undefined,target.cookie)).data.user,null);
+ await request(env,'login',credentials('luis'),'',401);
+ await request(env,'admin/people/'+targetId,undefined,boss.cookie,404);
+ await request(env,'admin/user-delete',{id:targetId,email:'luis@example.test'},boss.cookie,404);
+ await request(env,'account-active',{id:targetId,active:true},boss.cookie,404);
+ await request(env,'admin/role',{id:targetId,admin:true},boss.cookie,404);
+ await request(env,'reset-link',{id:targetId},boss.cookie,404);
+ assert.ok(!(await request(env,'users',undefined,boss.cookie)).data.some((item:any)=>item.id===targetId));
+ assert.equal((await request(env,'admin/summary',undefined,boss.cookie)).data.roles.eliminado,undefined);
+ assert.equal((await db.collection('audit_log').findOne({action:'user.delete',target:targetId}))?.target_name,null);
+});
+test('Eliminar usuario: archivos R2 quedan inaccesibles y se borran tras un reintento',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const objects=new Map<string,Uint8Array>();let failDeletes=true;
+ const bucket={
+  async put(key:string,data:Uint8Array){objects.set(key,new Uint8Array(data))},
+  async get(key:string){const data=objects.get(key);return data?{body:data}:null},
+  async delete(key:string){if(failDeletes)throw Error('Fallo temporal');objects.delete(key)}
+ };
+ const runtime={...env,MONGODB_FILES:'false',BUCKET:bucket};
+ const boss=await request(runtime,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const target=await request(runtime,'register',credentials('luis'));
+ const targetId=(await request(runtime,'me',undefined,target.cookie)).data.user.id;
+ const photo=(await upload(runtime,target.cookie,'photo')).data.id;
+ const document=(await upload(runtime,target.cookie,'document')).data.id;
+ const result=await request(runtime,'admin/user-delete',{id:targetId,email:'luis@example.test'},boss.cookie);
+ assert.equal(result.data.storageCleanupPending,true);
+ assert.equal(await db.collection('files').countDocuments({owner:targetId}),0);
+ assert.equal(await db.collection('file_deletions').countDocuments({}),2);
+ await request(runtime,'files/'+document,undefined,boss.cookie,404);
+ failDeletes=false;
+ const cleanup=await drainFileDeletions(db,bucket,[photo,document]);
+ assert.equal(cleanup.pending,0);
+ assert.equal(objects.size,0);
+ assert.equal(await db.collection('file_deletions').countDocuments({}),0);
+});
+test('Eliminar usuario: una carga iniciada antes no restaura archivos',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const objects=new Map<string,Uint8Array>();let release!:()=>void,entered!:()=>void;
+ const paused=new Promise<void>(resolve=>{release=resolve});
+ const uploading=new Promise<void>(resolve=>{entered=resolve});
+ const bucket={
+  async put(key:string,data:Uint8Array){objects.set(key,new Uint8Array(data));entered();await paused},
+  async get(key:string){const data=objects.get(key);return data?{body:data}:null},
+  async delete(key:string){objects.delete(key)}
+ };
+ const runtime={...env,MONGODB_FILES:'false',BUCKET:bucket};
+ const boss=await request(runtime,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const target=await request(runtime,'register',credentials('luis'));
+ const targetId=(await request(runtime,'me',undefined,target.cookie)).data.user.id;
+ const pendingUpload=upload(runtime,target.cookie,'photo',undefined,403);
+ await uploading;
+ await request(runtime,'admin/user-delete',{id:targetId,email:'luis@example.test'},boss.cookie);
+ release();await pendingUpload;
+ assert.equal(await db.collection('files').countDocuments({owner:targetId}),0);
+ assert.equal(objects.size,0);
+});
+test('Eliminar usuario: bloquea procesos abiertos y anonimiza historial cerrado',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const owner=await request(env,'register',credentials('ana'));
+ const provider=await request(env,'register',credentials('luis'));
+ const providerId=(await request(env,'me',undefined,provider.cookie)).data.user.id;
+ const ownerId=(await request(env,'me',undefined,owner.cookie)).data.user.id;
+ const photo=(await upload(env,provider.cookie,'photo')).data.id,document=(await upload(env,provider.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Servicio',photo,document,identity},provider.cookie,201);
+ await request(env,'approve',{id:providerId},boss.cookie);
+ const ownRid=(await request(env,'requests',{trade:'Pintura',description:'Descripción privada de solicitud',date:'2099-01-01'},provider.cookie,201)).data.id;
+ const rid=(await request(env,'requests',{trade:'Plomería',description:'Servicio en domicilio particular',date:'2099-01-01'},owner.cookie,201)).data.id;
+ await request(env,'quote',{request:rid,price:500,description:'Trabajo y materiales'},provider.cookie,201);
+ await request(env,'admin/user-delete',{id:providerId,email:'luis@example.test'},boss.cookie,409);
+ assert.equal((await db.collection('users').findOne({id:providerId}))?.role,'proveedor');
+ await db.collection('requests').updateOne({id:ownRid},{$set:{status:'Cancelada',closed_reason:'Motivo privado de cierre'}});
+ await db.collection('requests').updateOne({id:rid},{$set:{status:'Completado',provider:providerId}});
+ await db.collection('reviews').insertOne({request:rid,provider:providerId,owner:ownerId,stars:5,comment:'Comentario privado',hidden:false});
+ await db.collection('reports').insertOne({id:'reporte-prueba',request:rid,by:ownerId,against:providerId,reason:'Motivo privado',status:'Abierto',created:new Date().toISOString(),previous_status:'Completado',resolution:null,resolved_by:null,resolved_at:null});
+ await request(env,'admin/user-delete',{id:providerId,email:'luis@example.test'},boss.cookie,409);
+ await db.collection('reports').updateOne({id:'reporte-prueba'},{$set:{status:'Resuelto',resolution:'Resolución privada'}});
+ await request(env,'admin/user-delete',{id:providerId,email:'luis@example.test'},boss.cookie);
+ assert.equal((await db.collection('requests').findOne({id:rid}))?.provider,providerId);
+ assert.equal((await db.collection('requests').findOne({id:ownRid}))?.description,'Solicitud de cuenta eliminada');
+ assert.equal((await db.collection('requests').findOne({id:ownRid}))?.closed_reason,undefined);
+ assert.equal((await db.collection('quotes').findOne({provider:providerId}))?.description,'Cotización de cuenta eliminada');
+ const review=await db.collection('reviews').findOne({request:rid});assert.equal(review?.hidden,true);assert.equal(review?.comment,null);
+ const report=await db.collection('reports').findOne({id:'reporte-prueba'});assert.equal(report?.reason,'Cuenta eliminada');assert.equal(report?.resolution,null);
+});
+test('Eliminar usuario: dos administradores no pueden eliminar dos veces la misma cuenta',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const first=await request(env,'register',credentials('jefa'));
+ const second=await request(env,'register',credentials('jefe'));
+ const target=await request(env,'register',credentials('ana'));
+ await db.collection('users').updateMany({email:{$in:['jefa@example.test','jefe@example.test']}},{$set:{role:'admin'}});
+ const targetId=(await request(env,'me',undefined,target.cookie)).data.user.id;
+ const run=(cookie:string)=>handle(new Request('https://trade.test/api/admin/user-delete',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({id:targetId,email:'ana@example.test'})}),env);
+ const statuses=(await Promise.all([run(first.cookie),run(second.cookie)])).map(response=>response.status).sort();
+ assert.ok(statuses.includes(200));assert.ok(statuses.every(status=>[200,404,409].includes(status)));
+ assert.equal(await db.collection('audit_log').countDocuments({action:'user.delete',target:targetId}),1);
+});
+test('Eliminar usuario: dos administradores no pueden eliminarse mutuamente',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const first=await request(env,'register',credentials('jefa'));
+ const second=await request(env,'register',credentials('jefe'));
+ await db.collection('users').updateMany({email:{$in:['jefa@example.test','jefe@example.test']}},{$set:{role:'admin'}});
+ const firstId=(await request(env,'me',undefined,first.cookie)).data.user.id;
+ const secondId=(await request(env,'me',undefined,second.cookie)).data.user.id;
+ const run=(cookie:string,id:string,email:string)=>handle(new Request('https://trade.test/api/admin/user-delete',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({id,email})}),env);
+ const statuses=(await Promise.all([run(first.cookie,secondId,'jefe@example.test'),run(second.cookie,firstId,'jefa@example.test')])).map(response=>response.status).sort();
+ assert.equal(statuses[0],200);
+ assert.ok([403,409].includes(statuses[1]));
+ assert.equal(await db.collection('users').countDocuments({role:'admin',active:{$ne:false}}),1);
+ assert.equal(await db.collection('audit_log').countDocuments({action:'user.delete'}),1);
+});
+test('Eliminar usuario: la degradación simultánea conserva un administrador',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const first=await request(env,'register',credentials('jefa'));
+ const second=await request(env,'register',credentials('jefe'));
+ await db.collection('users').updateMany({email:{$in:['jefa@example.test','jefe@example.test']}},{$set:{role:'admin'}});
+ const firstId=(await request(env,'me',undefined,first.cookie)).data.user.id;
+ const secondId=(await request(env,'me',undefined,second.cookie)).data.user.id;
+ const run=(cookie:string,path:string,body:unknown)=>handle(new Request('https://trade.test/api/'+path,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify(body)}),env);
+ const statuses=(await Promise.all([
+  run(first.cookie,'admin/user-delete',{id:secondId,email:'jefe@example.test'}),
+  run(second.cookie,'admin/role',{id:firstId,admin:false})
+ ])).map(response=>response.status);
+ assert.equal(statuses.filter(status=>status===200).length,1);
+ assert.equal(await db.collection('users').countDocuments({role:'admin',active:{$ne:false}}),1);
+});
+test('Administración cancela un trabajo terminado con motivo visible y luego elimina al cliente',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const client=await request(env,'register',credentials('ana'));
+ const worker=await request(env,'register',credentials('luis'));
+ const clientId=(await request(env,'me',undefined,client.cookie)).data.user.id;
+ const workerId=(await request(env,'me',undefined,worker.cookie)).data.user.id;
+ const photo=(await upload(env,worker.cookie,'photo')).data.id,document=(await upload(env,worker.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Servicio',photo,document,identity},worker.cookie,201);
+ await request(env,'approve',{id:workerId},boss.cookie);
+ const rid=(await request(env,'requests',{trade:'Plomería',description:'Reparar llave',date:'2099-01-01'},client.cookie,201)).data.id;
+ await request(env,'quote',{request:rid,price:500,description:'Reparación'},worker.cookie,201);
+ const quote=(await request(env,'requests/'+rid,undefined,client.cookie)).data.quotes[0];
+ await request(env,'accept',{id:quote.id},client.cookie);
+ await request(env,'finish',{request:rid},worker.cookie);
+ await request(env,'admin/user-delete',{id:clientId,email:'ana@example.test'},boss.cookie,409);
+ await request(env,'admin/request-close',{id:rid,reason:'Se acordó suspender el servicio'},client.cookie,403);
+ await request(env,'admin/request-close',{id:rid},boss.cookie,400);
+ await request(env,'admin/request-close',{id:rid,reason:'Se acordó suspender el servicio'},boss.cookie);
+ await request(env,'admin/request-close',{id:rid,reason:'Repetida'},boss.cookie,409);
+ const clientDetail=(await request(env,'requests/'+rid,undefined,client.cookie)).data;
+ const workerDetail=(await request(env,'requests/'+rid,undefined,worker.cookie)).data;
+ assert.equal(clientDetail.closed_by,'admin');
+ assert.equal(clientDetail.closed_reason,'Se acordó suspender el servicio');
+ assert.equal(workerDetail.closed_reason,clientDetail.closed_reason);
+ assert.equal(workerDetail.quotes[0].status,'Cancelada');
+ await request(env,'admin/user-delete',{id:clientId,email:'ana@example.test'},boss.cookie);
+ assert.equal((await request(env,'requests/'+rid,undefined,worker.cookie)).data.closed_reason,'Se acordó suspender el servicio');
+});
+test('Administración retira una cotización y cancela una solicitud directa sin cerrar el trabajo ajeno',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const client=await request(env,'register',credentials('ana'));
+ const worker=await request(env,'register',credentials('luis'));
+ const workerId=(await request(env,'me',undefined,worker.cookie)).data.user.id;
+ const photo=(await upload(env,worker.cookie,'photo')).data.id,document=(await upload(env,worker.cookie,'document')).data.id;
+ await request(env,'apply',{trades:['Plomería'],experience:'5 años',zone:'León',description:'Servicio',photo,document,identity},worker.cookie,201);
+ await request(env,'approve',{id:workerId},boss.cookie);
+ const general=(await request(env,'requests',{trade:'Plomería',description:'Trabajo abierto',date:'2099-01-01'},client.cookie,201)).data.id;
+ await request(env,'quote',{request:general,price:500,description:'Reparación'},worker.cookie,201);
+ const quote=(await request(env,'requests/'+general,undefined,client.cookie)).data.quotes[0];
+ const profile=(await request(env,'admin/people/'+workerId,undefined,boss.cookie)).data;
+ assert.equal(profile.quoted.length,1);
+ await request(env,'admin/user-delete',{id:workerId,email:'luis@example.test'},boss.cookie,409);
+ await request(env,'admin/quote-withdraw',{id:quote.id,reason:'Cotización retirada por administración'},client.cookie,403);
+ await request(env,'admin/quote-withdraw',{id:quote.id},boss.cookie,400);
+ await request(env,'admin/quote-withdraw',{id:quote.id,reason:'Cotización retirada por administración'},boss.cookie);
+ await request(env,'admin/quote-withdraw',{id:quote.id,reason:'Otra vez'},boss.cookie,409);
+ const generalDetail=(await request(env,'requests/'+general,undefined,client.cookie)).data;
+ assert.equal(generalDetail.status,'Activa');
+ assert.equal(generalDetail.quotes[0].status,'Retirada');
+ assert.equal(generalDetail.quotes[0].closed_reason,'Cotización retirada por administración');
+ assert.equal((await request(env,'requests/'+general,undefined,worker.cookie)).data.quotes[0].closed_reason,'Cotización retirada por administración');
+ const direct=(await request(env,'requests',{trade:'Plomería',description:'Solicitud directa',date:'2099-01-01',provider:workerId},client.cookie,201)).data.id;
+ assert.equal((await request(env,'admin/people/'+workerId,undefined,boss.cookie)).data.targeted.length,1);
+ await request(env,'admin/user-delete',{id:workerId,email:'luis@example.test'},boss.cookie,409);
+ await request(env,'admin/request-close',{id:direct,reason:'Solicitud directa cancelada por administración'},boss.cookie);
+ const notice=(await request(env,'requests/'+direct,undefined,worker.cookie)).data;
+ assert.equal(notice.closed_reason,'Solicitud directa cancelada por administración');
+ assert.equal(notice.location,undefined);
+ assert.equal(notice.files.length,0);
+ assert.ok((await request(env,'requests?scope=assigned',undefined,worker.cookie)).data.some((row:any)=>row.id===direct&&row.status==='Cancelada'));
+ await request(env,'admin/user-delete',{id:workerId,email:'luis@example.test'},boss.cookie);
+});
+test('Administración resuelve el reporte abierto al cancelar un trabajo en disputa',async t=>{
+ const {db,env,close}=await fixture();t.after(close);
+ const boss=await request(env,'register',credentials('jefa'));await db.collection('users').updateOne({email:'jefa@example.test'},{$set:{role:'admin'}});
+ const client=await request(env,'register',credentials('ana'));
+ const worker=await request(env,'register',credentials('luis'));
+ const clientId=(await request(env,'me',undefined,client.cookie)).data.user.id;
+ const workerId=(await request(env,'me',undefined,worker.cookie)).data.user.id;
+ const rid='disputed-job',qid='accepted-quote';
+ await db.collection('requests').insertOne({id:rid,owner:clientId,trade:'Plomería',description:'Trabajo en disputa',date:'2099-01-01',status:'En disputa',provider:workerId,quote:qid,created:new Date().toISOString()});
+ await db.collection('quotes').insertOne({id:qid,request:rid,provider:workerId,price:500,description:'Trabajo',status:'Aceptada'});
+ await db.collection('reports').insertOne({id:'open-report',request:rid,by:clientId,against:workerId,reason:'Problema',status:'Abierto',created:new Date().toISOString(),previous_status:'Asignada',resolution:null,resolved_by:null,resolved_at:null});
+ assert.equal((await request(env,'admin/people/'+workerId,undefined,boss.cookie)).data.openReports,1);
+ await request(env,'admin/request-close',{id:rid,reason:'Administración cerró el trabajo'},boss.cookie);
+ assert.equal((await db.collection('reports').findOne({id:'open-report'}))?.status,'Resuelto');
+ assert.equal((await db.collection('quotes').findOne({id:qid}))?.status,'Cancelada');
+ assert.equal((await request(env,'requests/'+rid,undefined,client.cookie)).data.report.resolution,'Cancelado por administración: Administración cerró el trabajo');
+ assert.equal((await request(env,'requests/'+rid,undefined,worker.cookie)).data.closed_reason,'Administración cerró el trabajo');
 });
 test('Oficios: catálogo administrado, renombrar, desactivar, importar y exportar',async(t)=>{const {db,env,close}=await fixture();t.after(close);
  assert.deepEqual((await request(env,'trades')).data,['Plomería','Electricidad','Carpintería','Cerrajería','Pintura','Albañilería','Mantenimiento']);

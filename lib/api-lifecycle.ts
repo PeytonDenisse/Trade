@@ -24,7 +24,7 @@ export async function lifecyclePost(x:Ctx,path:string,b:any){
   if(r.owner!==x.user.id)x.fail('Solo quien publicó la solicitud puede cancelarla.',403);
   if(r.status!=='Activa')x.fail('Solo se cancelan solicitudes que aún no tienen propuesta aceptada.',409);
   const why=b.reason?required(b.reason,'Motivo',300):null;
-  if(!(await x.c('requests').updateOne({id:r.id,status:'Activa'},{$set:{status:'Cancelada',closed_reason:why}})).modifiedCount)x.fail('La solicitud ya cambió de estado.',409);
+  if(!(await x.c('requests').updateOne({id:r.id,status:'Activa'},{$set:{status:'Cancelada',closed_reason:why,closed_by:'cliente'}})).modifiedCount)x.fail('La solicitud ya cambió de estado.',409);
   await x.c('quotes').updateMany({request:r.id,status:'Pendiente'},{$set:{status:'No seleccionada'}});
   return x.json({ok:true});
  }

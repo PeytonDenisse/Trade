@@ -13,6 +13,8 @@ export type Ctx={
  json:(data:any,status?:number,headers?:Record<string,string>)=>Response;
  user:any;
  automaticReviewAvailable?:boolean;
+ mongoFiles?:boolean;
+ bucket?:{delete:(key:string)=>Promise<unknown>};
  auth:()=>any;
  token?:string;
  url:URL;

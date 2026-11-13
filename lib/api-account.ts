@@ -29,7 +29,7 @@ export async function accountPost(x:Ctx,path:string,b:any){
   const r=await x.one('password_resets',{token_hash:hash,status:'Enviada',expires:{$gt:Date.now()}});
   if(!r)x.fail('El enlace ya no es válido. Pide uno nuevo a administración.',410);
   const salt=x.id();
-  await x.c('users').updateOne({id:r.user_id},{$set:{hash:await passwordHash(pw,salt),salt}});
+  if(!(await x.c('users').updateOne({id:r.user_id,role:{$ne:'eliminado'}},{$set:{hash:await passwordHash(pw,salt),salt}})).matchedCount)x.fail('El enlace ya no es válido. Pide uno nuevo a administración.',410);
   await x.c('password_resets').updateOne({id:r.id},{$set:{status:'Usada',token_hash:null}});
   // A new password signs out every device that knew the old one.
   await x.c('sessions').deleteMany({user_id:r.user_id});
@@ -37,7 +37,7 @@ export async function accountPost(x:Ctx,path:string,b:any){
  }
  if(path==='reset-link'){
   x.auth();if(x.user.role!=='admin')x.fail('Solo administración genera enlaces de recuperación.',403);
-  const target=await x.one('users',{id:x.sid(b.id)},{id:1,name:1});if(!target)x.fail('Usuario no encontrado.',404);
+  const target=await x.one('users',{id:x.sid(b.id),role:{$ne:'eliminado'}},{id:1,name:1});if(!target)x.fail('Usuario no encontrado.',404);
   // The link carries the token; only its hash is stored.
   const token=x.id()+x.id(),fields={status:'Enviada',token_hash:await sha256(token),expires:Date.now()+DAY,issued_by:x.user.id};
   const open=await x.one('password_resets',{user_id:target.id,status:{$in:['Solicitada','Enviada']}});
@@ -51,7 +51,7 @@ export async function accountPost(x:Ctx,path:string,b:any){
   if(b.name!==undefined)set.name=required(b.name,'Nombre',100);
   if(b.photo!==undefined){if(b.photo===null)set.photo=null;else{const fid=x.sid(b.photo);if(!await x.one('files',{id:fid,owner:x.user.id,kind:'avatar'}))x.fail('Sube la foto de nuevo.');set.photo=fid}}
   if(!Object.keys(set).length)x.fail('No hay cambios que guardar.');
-  await x.c('users').updateOne({id:x.user.id},{$set:set});
+  if(!(await x.c('users').updateOne({id:x.user.id,active:{$ne:false},role:{$ne:'eliminado'}},{$set:set})).matchedCount)x.fail('La cuenta ya no está disponible.',403);
   return x.json({ok:true});
  }
  if(path==='account-password'){
@@ -59,7 +59,7 @@ export async function accountPost(x:Ctx,path:string,b:any){
   if(await passwordHash(required(b.current,'Contraseña actual',128),u.salt)!==u.hash)x.fail('La contraseña actual no es correcta.',403);
   const pw=newPassword(b.password);if(await passwordHash(pw,u.salt)===u.hash)x.fail('Elige una contraseña distinta de la actual.');
   const salt=x.id();
-  await x.c('users').updateOne({id:u.id},{$set:{hash:await passwordHash(pw,salt),salt}});
+  if(!(await x.c('users').updateOne({id:u.id,active:{$ne:false},role:{$ne:'eliminado'}},{$set:{hash:await passwordHash(pw,salt),salt}})).matchedCount)x.fail('La cuenta ya no está disponible.',403);
   // Other devices sign out; this one stays signed in.
   await x.c('sessions').deleteMany({user_id:u.id,token:{$ne:x.token}});
   return x.json({ok:true});

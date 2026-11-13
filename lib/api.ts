@@ -32,7 +32,8 @@ function mongoStorage(db:Db){
   async get(key:string){
    const object=await objects.findOne({_id:key});
    return object?{body:new Uint8Array(object.data.value())}:null;
-  }
+  },
+  async delete(key:string){await objects.deleteOne({_id:key})}
  };
 }
 export function handle(req:Request,env:Env){
@@ -55,7 +56,7 @@ async function route(req:Request,env:Env,db:Db){
  if(user?.photo)user.photo_url='/api/files/'+user.photo;
  const auth=()=>{if(!user)fail('Inicia sesión para continuar.',401);return user};
  const automaticReviewAvailable=Boolean(env.PROVIDER_REVIEW_QUEUE&&env.MONGODB_FILES==='true');
- const ctx:Ctx={db,c,one,all,agg,fail:fail as Ctx['fail'],sid,id,json,user,auth,token,url,automaticReviewAvailable};
+ const ctx:Ctx={db,c,one,all,agg,fail:fail as Ctx['fail'],sid,id,json,user,auth,token,url,automaticReviewAvailable,mongoFiles:env.MONGODB_FILES==='true',bucket:env.BUCKET};
  const scheduleReview=(providerId:string,documentId:string)=>enqueueProviderReview(db,automaticReviewAvailable?env.PROVIDER_REVIEW_QUEUE:undefined,providerId,documentId).catch(()=>false);
  const own=async(rid:string)=>{const r=await one('requests',{id:rid});if(!r)fail('Solicitud no encontrada.',404);return r as any};
  // A request asked to one provider (target) is only open to that provider.
@@ -85,8 +86,16 @@ async function route(req:Request,env:Env,db:Db){
  }
  if(path==='providers'){const t=url.searchParams.get('trade');return json(await agg('providers',[{$match:{status:'Aprobada',...ACTIVE,...(t?{trades:t}:{})}},...withActiveAccount,{$lookup:{from:'reviews',localField:'id',foreignField:'provider',as:'_r'}},{$set:{rating:{$avg:{$map:{input:{$filter:{input:'$_r',cond:{$ne:['$$this.hidden',true]}}},in:'$$this.stars'}}}}},...withName('id','name'),...withPhotoUrl,{$project:{document:0,identity:0,analysis:0,analysis_eligible:0,_r:0}}]))}
  if(path.startsWith('providers/')){const pid=path.split('/')[1];const [p]=await agg('providers',[{$match:{id:pid,status:'Aprobada',...ACTIVE}},...withActiveAccount,...withName('id','name'),...withPhotoUrl,{$project:{document:0,identity:0,analysis:0,analysis_eligible:0}}]);if(!p)fail('Proveedor no encontrado.',404);const done=(await all('requests',{provider:pid,status:'Completado'},{},{id:1})).map(r=>r.id);return json({...p,works:await all('files',{request:{$in:done},kind:{$in:['before','after']}},{},{id:1,kind:1,request:1,url:1}),reviews:await all('reviews',{provider:pid,hidden:{$ne:true}},{},{stars:1,comment:1})})}
- if(path==='requests'){auth();const scope=url.searchParams.get('scope');if(scope==='available'){const p=await provider();return json(await agg('requests',[{$match:{trade:{$in:tradesOf(p)},status:'Activa',owner:{$ne:user.id},$or:[{target:null},{target:{$exists:false}},{target:user.id}]}},{$sort:{created:-1}},...withName('owner','owner_name'),...withProblemFile,{$project:{location:0}}]))}if(scope==='assigned')return json(await agg('requests',[{$match:{provider:user.id}},{$sort:{created:-1}},...withProblemFile]));return json(await agg('requests',[{$match:{owner:user.id}},{$sort:{created:-1}},...withProblemFile,...withName('target','target_name')]))}
- if(path.startsWith('requests/')){auth();const r=await own(path.split('/')[1]);const p=await approved(user.id);const participant=r.owner===user.id||r.provider===user.id;if(!participant&&!(tradesOf(p).includes(r.trade)&&r.status==='Activa'&&openTo(r,user.id)))fail('No tienes acceso a este servicio.',403);const target:any=r.target?await one('users',{id:r.target},{name:1}):null;return json({...r,location:participant?r.location:undefined,locationShared:!!r.location,target_name:target?.name,quotes:await agg('quotes',[{$match:{request:r.id,...(r.owner===user.id?{}:{provider:user.id})}},...withName('provider','provider_name')]),files:await all('files',{request:r.id},{},{id:1,kind:1,url:1}),review:await one('reviews',{request:r.id}),report:(await all('reports',{request:r.id},{created:-1},{id:1,status:1,reason:1,resolution:1,created:1,by:1}))[0]||null})}
+ if(path==='requests'){auth();const scope=url.searchParams.get('scope');if(scope==='available'){const p=await provider();return json(await agg('requests',[{$match:{trade:{$in:tradesOf(p)},status:'Activa',owner:{$ne:user.id},$or:[{target:null},{target:{$exists:false}},{target:user.id}]}},{$sort:{created:-1}},...withName('owner','owner_name'),...withProblemFile,{$project:{location:0}}]))}if(scope==='assigned'){
+  const quotedIds=(await all('quotes',{provider:user.id},{},{request:1})).map(row=>row.request);
+  const assigned=await agg('requests',[{$match:{$or:[{provider:user.id},{status:'Cancelada',closed_by:'admin',$or:[{target:user.id},{id:{$in:quotedIds}}]}]}},{$sort:{created:-1}},...withProblemFile]);
+  return json(assigned.map((row:any)=>row.provider===user.id?row:{...row,problem_file:null,location:undefined}));
+ }return json(await agg('requests',[{$match:{owner:user.id}},{$sort:{created:-1}},...withProblemFile,...withName('target','target_name')]))}
+ if(path.startsWith('requests/')){auth();const r=await own(path.split('/')[1]);const p=await approved(user.id);const participant=r.owner===user.id||r.provider===user.id;
+  const cancellationNotice=r.status==='Cancelada'&&r.closed_by==='admin'&&(r.target===user.id||!!await one('quotes',{request:r.id,provider:user.id},{id:1}));
+  if(!participant&&!cancellationNotice&&!(tradesOf(p).includes(r.trade)&&r.status==='Activa'&&openTo(r,user.id)))fail('No tienes acceso a este servicio.',403);
+  const target:any=r.target?await one('users',{id:r.target},{name:1}):null;
+  return json({...r,location:participant?r.location:undefined,locationShared:!!r.location,target_name:target?.name,quotes:await agg('quotes',[{$match:{request:r.id,...(r.owner===user.id?{}:{provider:user.id})}},...withName('provider','provider_name')]),files:cancellationNotice&&!participant?[]:await all('files',{request:r.id},{},{id:1,kind:1,url:1}),review:participant?await one('reviews',{request:r.id}):null,report:participant?(await all('reports',{request:r.id},{created:-1},{id:1,status:1,reason:1,resolution:1,created:1,by:1}))[0]||null:null})}
  if(path.startsWith('files/')){const f:any=await one('files',{id:path.split('/')[1]});if(!f)fail('Archivo no encontrado.',404);let allowed=false;if(f.kind==='photo')allowed=!!await one('providers',{photo:f.id,status:'Aprobada'});if(f.request){const r=await own(f.request);allowed=r.status==='Completado'&&['before','after'].includes(f.kind);if(user){const p=await approved(user.id);allowed=allowed||r.owner===user.id||r.provider===user.id||(f.kind==='problem'&&r.status==='Activa'&&tradesOf(p).includes(r.trade)&&openTo(r,user.id))}}if(user&&(f.owner===user.id||user.role==='admin'||f.kind==='avatar'))allowed=true;if(!allowed)fail('No tienes acceso al archivo.',403);const obj=await env.BUCKET.get(f.id);if(!obj)fail('Archivo no encontrado.',404);return new Response(obj.body,{headers:{'Content-Type':f.mime,'X-Content-Type-Options':'nosniff','Cache-Control':f.kind==='document'?'private, no-store':'private, max-age=31536000, immutable'}})}
  const reply=await accountGet(ctx,path)??await adminGet(ctx,path);if(reply)return reply;
  return json({error:'Ruta no encontrada.'},404);
@@ -95,7 +104,21 @@ async function route(req:Request,env:Env,db:Db){
  if(path==='upload'){
  if(!env.BUCKET)fail('La carga de imágenes está deshabilitada temporalmente.',503);
  auth();const form=await req.formData(),file=form.get('file') as File,kind=String(form.get('kind')),rid=String(form.get('request')||'');if(!file||typeof file.arrayBuffer!=='function'||file.size>5*1024*1024||file.size===0)fail('Adjunta una imagen de hasta 5 MB.');if(!['photo','document','avatar','problem','before','after'].includes(kind))fail('Tipo de imagen inválido.');if(rid){const r=await own(rid);if(kind==='problem'){if(r.owner!==user.id||r.status!=='Activa')fail('Solo puedes añadir fotografías a tus solicitudes activas.',403)}else if(['before','after'].includes(kind)){if(r.provider!==user.id||r.status!=='Asignada')fail('Solo el proveedor asignado puede registrar evidencia durante el trabajo.',403)}else fail('Tipo de archivo no permitido.')}else if(!['photo','document','avatar'].includes(kind))fail('Selecciona un servicio.');
- const bytes=new Uint8Array(await file.arrayBuffer());const png=bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71&&bytes[4]===13&&bytes[5]===10&&bytes[6]===26&&bytes[7]===10;const jpg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255;const webp=String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP';const mime=png?'image/png':jpg?'image/jpeg':webp?'image/webp':'';if(!mime||mime!==file.type)fail('Usa una imagen PNG, JPG o WebP válida.');const fid=id();await env.BUCKET.put(fid,bytes,{httpMetadata:{contentType:mime}});await c('files').insertOne({id:fid,owner:user.id,request:rid||null,kind,mime});return json({id:fid},201);
+ const bytes=new Uint8Array(await file.arrayBuffer());const png=bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71&&bytes[4]===13&&bytes[5]===10&&bytes[6]===26&&bytes[7]===10;const jpg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255;const webp=String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP';const mime=png?'image/png':jpg?'image/jpeg':webp?'image/webp':'';if(!mime||mime!==file.type)fail('Usa una imagen PNG, JPG o WebP válida.');const fid=id();await env.BUCKET.put(fid,bytes,{httpMetadata:{contentType:mime}});
+ const uploadSession=db.client.startSession();
+ try{
+  await uploadSession.withTransaction(async()=>{
+   const locked=await c('users').updateOne({id:user.id,active:{$ne:false},role:{$ne:'eliminado'}},{$inc:{fileWriteFence:1}},{session:uploadSession});
+   if(!locked.matchedCount)fail('La cuenta ya no está disponible.',403);
+   await c('files').insertOne({id:fid,owner:user.id,request:rid||null,kind,mime},{session:uploadSession});
+  });
+ }catch(error){
+  try{await env.BUCKET.delete(fid)}catch{
+   await c('file_deletions').updateOne({id:fid},{$setOnInsert:{id:fid,queued_at:new Date().toISOString(),attempts:0,next_at:Date.now()}},{upsert:true});
+  }
+  throw error;
+ }finally{await uploadSession.endSession()}
+ return json({id:fid},201);
  }
  const b:any=await req.json().catch(()=>fail('Datos inválidos.'));
  // This shared seed endpoint relies on the verified owner-private Sites boundary.

@@ -14,8 +14,8 @@ export const collections: Record<string, Def> = {
   users: {
     key: "id",
     // photo: avatar file id; created_at: ISO date of registration (older accounts have none).
-    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: bool, photo: optStr, created_at: optStr, deactivated_reason: optStr },
-    optional: ["photo", "created_at", "deactivated_reason"],
+    fields: { id: str, name: str, email: str, hash: str, salt: str, role: str, active: bool, photo: optStr, created_at: optStr, deactivated_reason: optStr, fileWriteFence: num },
+    optional: ["photo", "created_at", "deactivated_reason", "fileWriteFence"],
     unique: [{ email: 1 }],
   },
   password_resets: {
@@ -57,14 +57,15 @@ export const collections: Record<string, Def> = {
     // target: provider the client asked directly; empty means any approved provider of the trade.
     // status: Activa → Asignada → Terminado → Completado, or Cancelada / Vencida / En disputa.
     // closed_reason: why it was cancelled (by the client or administration).
-    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str, target: optStr, closed_reason: optStr,
+    fields: { id: str, owner: str, trade: str, description: str, date: str, status: str, provider: optStr, quote: optStr, created: str, target: optStr, closed_reason: optStr, closed_by: optStr,
       location: { bsonType: "object", required: ["lat", "lng"], additionalProperties: false, properties: { lat: { bsonType: "number", minimum: -90, maximum: 90 }, lng: { bsonType: "number", minimum: -180, maximum: 180 }, address: { bsonType: "string", maxLength: 300 } } } },
-    optional: ["provider", "quote", "target", "closed_reason", "location"],
+    optional: ["provider", "quote", "target", "closed_reason", "closed_by", "location"],
     index: [{ owner: 1 }, { provider: 1 }, { trade: 1, status: 1 }, { target: 1 }],
   },
   quotes: {
     key: "id",
-    fields: { id: str, request: str, provider: str, price: num, description: str, status: str },
+    fields: { id: str, request: str, provider: str, price: num, description: str, status: str, closed_reason: optStr },
+    optional: ["closed_reason"],
     unique: [{ request: 1, provider: 1 }],
   },
   files: {
@@ -88,10 +89,12 @@ export const collections: Record<string, Def> = {
   settings: {
     key: "key",
     // One document (key "app") with the platform settings administration can change.
-    fields: { key: str, registrationOpen: bool, providerApplicationsOpen: bool, requestExpiryDays: num, maxOpenRequests: num, updated_at: optStr, updated_by: optStr,providerAutomaticReview:bool,providerReviewGeneration:num,providerReviewFence:num },
-    optional: ["registrationOpen", "providerApplicationsOpen", "requestExpiryDays", "maxOpenRequests", "updated_at", "updated_by","providerAutomaticReview","providerReviewGeneration","providerReviewFence"],
+    fields: { key: str, registrationOpen: bool, providerApplicationsOpen: bool, requestExpiryDays: num, maxOpenRequests: num, updated_at: optStr, updated_by: optStr,providerAutomaticReview:bool,providerReviewGeneration:num,providerReviewFence:num,adminDeleteFence:num },
+    optional: ["registrationOpen", "providerApplicationsOpen", "requestExpiryDays", "maxOpenRequests", "updated_at", "updated_by","providerAutomaticReview","providerReviewGeneration","providerReviewFence","adminDeleteFence"],
   },
   provider_review_jobs:{key:'_id',fields:{_id:str,provider:str,document:str,generation:num,state:{enum:['queued','processing','finished','manual','cancelled']},created:str,attempts:num,lease:str,lease_until:num,outcome:str},optional:['lease','lease_until','outcome'],index:[{provider:1,document:1},{state:1,lease_until:1}]},
+  // R2 deletion is retried after the account and file metadata are removed atomically.
+  file_deletions:{key:'id',fields:{id:str,queued_at:str,attempts:num,next_at:num},index:[{next_at:1}]},
   audit_log: {
     key: "id",
     // One row per admin action: who did what to whom, and why.
@@ -128,6 +131,7 @@ export async function ensureCollections(db: Db, log: (msg: string) => void = () 
     if(def.key!=='_id')await coll.createIndex({ [def.key]: 1 }, { unique: true });
     for (const keys of def.unique ?? []) await coll.createIndex(keys, { unique: true });
     for (const keys of def.index ?? []) await coll.createIndex(keys);
+    if (name === 'settings') await coll.updateOne({ key: 'app' }, { $setOnInsert: { key: 'app' } }, { upsert: true });
     if ("trades" in def.fields) await coll.updateMany({ trades: { $exists: false } }, [{ $set: { trades: ["$trade"] } }]);
     if ("active" in def.fields) await coll.updateMany({ active: { $exists: false } }, { $set: { active: true } });
     log(`${existing.has(name) ? "updated" : "created"} ${name}`);

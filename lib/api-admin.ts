@@ -3,6 +3,7 @@ import {decideProvider} from './provider-decision';
 import type {Ctx} from './api-context';
 import {tradeNames} from './trades-db';
 import {getSettings,settingsUpdate,type Settings} from './settings-db';
+import {drainFileDeletions} from './file-deletions';
 
 // Administration (design PDF, section 7). Every change an admin makes is written to audit_log.
 const reason=(v:unknown,label='Motivo')=>v==null||v===''?null:required(v,label,300);
@@ -25,7 +26,7 @@ function csv(rows:any[],columns:[string,string][]){
 }
 const exportsBy:Record<string,{label:string;columns:[string,string][];rows:(x:Ctx)=>Promise<any[]>}>={
  personas:{label:'personas',columns:[['name','Nombre'],['email','Correo'],['role','Rol'],['active','Cuenta activa'],['created_at','Registro'],['provider_status','Estado de proveedor'],['trades','Oficios'],['zone','Zona']],
-  rows:x=>x.agg('users',[{$lookup:{from:'providers',localField:'id',foreignField:'id',as:'_p'}},{$set:{_p:{$first:'$_p'}}},{$project:{_id:0,name:1,email:1,role:1,created_at:1,active:{$cond:[{$eq:['$active',false]},'No','Sí']},provider_status:'$_p.status',zone:'$_p.zone',trades:{$reduce:{input:{$ifNull:['$_p.trades',[]]},initialValue:'',in:{$concat:['$$value',{$cond:[{$eq:['$$value','']},'',', ']},'$$this']}}}}},{$sort:{name:1}}])},
+  rows:x=>x.agg('users',[{$match:{role:{$ne:'eliminado'}}},{$lookup:{from:'providers',localField:'id',foreignField:'id',as:'_p'}},{$set:{_p:{$first:'$_p'}}},{$project:{_id:0,name:1,email:1,role:1,created_at:1,active:{$cond:[{$eq:['$active',false]},'No','Sí']},provider_status:'$_p.status',zone:'$_p.zone',trades:{$reduce:{input:{$ifNull:['$_p.trades',[]]},initialValue:'',in:{$concat:['$$value',{$cond:[{$eq:['$$value','']},'',', ']},'$$this']}}}}},{$sort:{name:1}}])},
  solicitudes:{label:'solicitudes',columns:[['id','Solicitud'],['trade','Oficio'],['status','Estado'],['owner_name','Cliente'],['provider_name','Proveedor'],['date','Fecha pedida'],['created','Creada']],
   rows:x=>x.agg('requests',[{$lookup:{from:'users',localField:'owner',foreignField:'id',as:'_o'}},{$lookup:{from:'users',localField:'provider',foreignField:'id',as:'_v'}},{$project:{_id:0,id:1,trade:1,status:1,date:1,created:1,owner_name:{$first:'$_o.name'},provider_name:{$first:'$_v.name'}}},{$sort:{created:-1}}])},
  resenas:{label:'reseñas',columns:[['provider_name','Proveedor'],['stars','Estrellas'],['comment','Comentario'],['hidden','Oculta']],
@@ -36,14 +37,14 @@ const exportsBy:Record<string,{label:string;columns:[string,string][];rows:(x:Ct
 
 export async function adminGet(x:Ctx,path:string){
  // Directory of every account; never returns hash or salt.
- if(path==='users'){admin(x);return x.json(await x.agg('users',[{$project:{_id:0,id:1,name:1,email:1,role:1,photo:1,created_at:1,active:{$ne:['$active',false]}}},{$lookup:{from:'requests',localField:'id',foreignField:'owner',as:'_req'}},{$lookup:{from:'providers',localField:'id',foreignField:'id',as:'_prov'}},{$set:{requests:{$size:'$_req'},provider_status:{$first:'$_prov.status'},provider_active:{$ne:[{$first:'$_prov.active'},false]}}},{$project:{_req:0,_prov:0}},{$sort:{name:1}}]))}
+ if(path==='users'){admin(x);return x.json(await x.agg('users',[{$match:{role:{$ne:'eliminado'}}},{$project:{_id:0,id:1,name:1,email:1,role:1,photo:1,created_at:1,active:{$ne:['$active',false]}}},{$lookup:{from:'requests',localField:'id',foreignField:'owner',as:'_req'}},{$lookup:{from:'providers',localField:'id',foreignField:'id',as:'_prov'}},{$set:{requests:{$size:'$_req'},provider_status:{$first:'$_prov.status'},provider_active:{$ne:[{$first:'$_prov.active'},false]}}},{$project:{_req:0,_prov:0}},{$sort:{name:1}}]))}
  if(path==='applications'){admin(x);return x.json(await x.agg('providers',[{$set:{_order:{$indexOfArray:[['Pendiente','Rechazada','Aprobada'],'$status']}}},{$sort:{_order:1}},{$project:{_order:0}},{$lookup:{from:'users',localField:'id',foreignField:'id',as:'_u'}},{$set:{name:{$first:'$_u.name'}}},{$project:{_id:0,_u:0}},...withPhoto]))}
  // Tablero: what needs attention first, then how the platform is doing.
  if(path==='admin/summary'){
   admin(x);const count=(name:string,filter:any)=>x.c(name).countDocuments(filter);
   const [registrations,recoveries,reports,roles,inactive,statuses,newPeople,newRequests,activity]=await Promise.all([
    count('providers',{status:'Pendiente'}),count('password_resets',{status:'Solicitada'}),count('reports',{status:'Abierto'}),
-   x.agg('users',[{$group:{_id:'$role',n:{$sum:1}}}]),count('users',{active:false}),
+   x.agg('users',[{$match:{role:{$ne:'eliminado'}}},{$group:{_id:'$role',n:{$sum:1}}}]),count('users',{active:false,role:{$ne:'eliminado'}}),
    x.agg('requests',[{$group:{_id:'$status',n:{$sum:1}}}]),
    count('users',{created_at:{$gte:since(7)}}),count('requests',{created:{$gte:since(7)}}),
    x.all('audit_log',{},{at:-1,_id:-1}).then(list=>list.slice(0,6)),
@@ -54,17 +55,21 @@ export async function adminGet(x:Ctx,path:string){
  // Ficha de persona: everything about one account in one place.
  if(path.startsWith('admin/people/')){
   admin(x);const pid=path.split('/')[2];
-  const [person]=await x.agg('users',[{$match:{id:pid}},{$project:{_id:0,hash:0,salt:0}}]);if(!person)x.fail('Persona no encontrada.',404);
+  const [person]=await x.agg('users',[{$match:{id:pid,role:{$ne:'eliminado'}}},{$project:{_id:0,hash:0,salt:0}}]);if(!person)x.fail('Persona no encontrada.',404);
   if(person.photo)person.photo_url='/api/files/'+person.photo;
   const [registration]=await x.agg('providers',[{$match:{id:pid}},...withPhoto]);
-  const [requests,jobs,reviews,history,recovery]=await Promise.all([
+  const [requests,jobs,targeted,quoted,reviews,history,recovery]=await Promise.all([
    x.all('requests',{owner:pid},{created:-1},{id:1,trade:1,status:1,created:1,description:1,date:1}),
    x.all('requests',{provider:pid},{created:-1},{id:1,trade:1,status:1,created:1,description:1,date:1}),
+   x.all('requests',{target:pid,provider:{$ne:pid},status:'Activa'},{created:-1},{id:1,trade:1,status:1,created:1,description:1,date:1}),
+   x.agg('quotes',[{$match:{provider:pid,status:'Pendiente'}},{$lookup:{from:'requests',localField:'request',foreignField:'id',as:'_request'}},{$set:{_request:{$first:'$_request'}}},{$match:{'_request.status':'Activa'}},{$project:{_id:0,id:1,request:1,status:1,trade:'$_request.trade',description:'$_request.description',created:'$_request.created',date:'$_request.date'}},{$sort:{created:-1}}]),
    x.all('reviews',{provider:pid},{},{request:1,stars:1,comment:1,hidden:1}),
    x.all('audit_log',{target:pid},{at:-1,_id:-1}).then(list=>list.slice(0,25)),
    x.one('password_resets',{user_id:pid,status:{$in:['Solicitada','Enviada']}},{token_hash:0}),
   ]);
-  return x.json({person,registration:registration||null,requests,jobs,reviews,history,recovery});
+  const relatedIds=(await x.all('requests',{$or:[{owner:pid},{provider:pid},{target:pid}]},{},{id:1})).map(row=>row.id);
+  const openReports=await x.c('reports').countDocuments({status:'Abierto',$or:[{by:pid},{against:pid},{request:{$in:relatedIds}}]});
+  return x.json({person,registration:registration||null,requests,jobs,targeted,quoted,openReports,reviews,history,recovery});
  }
  // Moderación: problem reports, reviews and requests that have been waiting the longest.
  if(path==='admin/moderation'){
@@ -162,7 +167,69 @@ async function tradesPost(x:Ctx,path:string,b:any){
  return null;
 }
 
+// Keep a non-login tombstone with the same id so closed work keeps valid
+// references. All mutable private data and file bytes are removed together.
+async function deleteUser(x:Ctx,b:any){
+ admin(x);
+ const uid=x.sid(b.id),email=x.sid(b.email).trim().toLowerCase();
+ if(!uid||!email)x.fail('Indica la cuenta y confirma su correo.',400);
+ if(uid===x.user.id)x.fail('No puedes eliminar tu propia cuenta.',403);
+ const session=x.db.client.startSession();
+ let externalKeys:string[]=[];
+ try{
+  await session.withTransaction(async()=>{
+   const db=x.db,users=db.collection<any>('users');
+   await db.collection('settings').updateOne({key:'app'},{$inc:{adminDeleteFence:1}},{upsert:true,session});
+   if(!await users.findOne({id:x.user.id,role:'admin',active:{$ne:false}},{session}))x.fail('Acceso reservado a administración.',403);
+   const person=await users.findOne({id:uid,role:{$ne:'eliminado'}},{session});
+   if(!person)x.fail('La persona ya no existe.',404);
+   if(person.email.toLowerCase()!==email)x.fail('El correo de confirmación no coincide.',400);
+   if(person.role==='admin'&&person.active!==false){
+    if(await users.countDocuments({role:'admin',active:{$ne:false}},{session})<=1)x.fail('No puedes eliminar el último administrador activo.',409);
+   }
+   const open=['Activa','Asignada','Terminado','En disputa'];
+   const requests=db.collection<any>('requests');
+   const related={ $or:[{owner:uid},{provider:uid},{target:uid}] };
+   if(await requests.countDocuments({...related,status:{$in:open}},{session}))x.fail('La persona tiene solicitudes o trabajos sin cerrar. Resuélvelos antes de eliminarla.',409);
+   const history=await requests.find(related,{session,projection:{id:1}}).toArray();
+   const requestIds=history.map(item=>item.id);
+   if(await db.collection('reports').countDocuments({status:'Abierto',$or:[{by:uid},{against:uid},...(requestIds.length?[{request:{$in:requestIds}}]:[])]},{session}))x.fail('La persona tiene reportes abiertos. Resuélvelos antes de eliminarla.',409);
+   const quotes=await db.collection<any>('quotes').find({provider:uid,status:{$in:['Pendiente','Aceptada']}},{session,projection:{request:1}}).toArray();
+   if(quotes.length&&await requests.countDocuments({id:{$in:quotes.map(q=>q.request)},status:{$in:open}},{session}))x.fail('La persona tiene cotizaciones vigentes. Resuélvelas antes de eliminarla.',409);
+   const ownedFiles=await db.collection<any>('files').find({owner:uid},{session,projection:{id:1}}).toArray();
+   externalKeys=x.mongoFiles?[]:ownedFiles.map(item=>item.id);
+   // The conditional write makes simultaneous deletion attempts conflict.
+   if(!(await users.updateOne({id:uid,role:{$ne:'eliminado'}},{$set:{name:'Cuenta eliminada',email:`cuenta-eliminada-${uid}@deleted.invalid`,hash:'!',salt:'!',role:'eliminado',active:false,photo:null,created_at:null,deactivated_reason:null}},{session})).matchedCount)x.fail('La cuenta cambió durante la eliminación.',409);
+   await db.collection('sessions').deleteMany({user_id:uid},{session});
+   await db.collection('password_resets').deleteMany({user_id:uid},{session});
+   await db.collection('provider_review_jobs').deleteMany({provider:uid},{session});
+   await db.collection('providers').deleteOne({id:uid},{session});
+   if(ownedFiles.length){const ids=ownedFiles.map(item=>item.id);await db.collection('files').deleteMany({owner:uid},{session});if(x.mongoFiles)await db.collection('file_objects').deleteMany({_id:{$in:ids}},{session});else await db.collection('file_deletions').insertMany(ids.map(id=>({id,queued_at:new Date().toISOString(),attempts:0,next_at:Date.now()})),{session})}
+   await requests.updateMany({owner:uid},{$set:{description:'Solicitud de cuenta eliminada'},$unset:{location:''}},{session});
+   await requests.updateMany({owner:uid,closed_by:{$ne:'admin'}},{$unset:{closed_reason:''}},{session});
+   await db.collection('quotes').updateMany({provider:uid},{$set:{description:'Cotización de cuenta eliminada'}},{session});
+   await db.collection('reviews').updateMany({$or:[{owner:uid},{provider:uid}]},{$set:{comment:null,hidden:true,hidden_reason:'Cuenta eliminada'}},{session});
+   await db.collection('reports').updateMany({$or:[{by:uid},{against:uid},...(requestIds.length?[{request:{$in:requestIds}}]:[])]},{$set:{reason:'Cuenta eliminada',resolution:null}},{session});
+   await db.collection('password_resets').updateMany({issued_by:uid},{$set:{issued_by:null}},{session});
+   await db.collection('providers').updateMany({decided_by:uid},{$set:{decided_by:null}},{session});
+   await db.collection('reports').updateMany({resolved_by:uid},{$set:{resolved_by:null}},{session});
+   await db.collection('settings').updateMany({updated_by:uid},{$set:{updated_by:null}},{session});
+   await db.collection('audit_log').updateMany({actor:uid},{$set:{actor_name:'Cuenta eliminada',detail:null}},{session});
+   await db.collection('audit_log').updateMany({target:uid},{$set:{target_name:null,detail:null}},{session});
+   await db.collection('audit_log').insertOne({id:x.id(),at:new Date().toISOString(),actor:x.user.id,actor_name:x.user.name,action:'user.delete',target:uid,target_name:null,detail:'Cuenta anonimizada y acceso revocado.'},{session});
+   return true;
+  },{readConcern:{level:'snapshot'},writeConcern:{w:'majority'}});
+  let storageCleanupPending=externalKeys.length>0;
+  if(externalKeys.length&&x.bucket?.delete){
+   try{storageCleanupPending=(await drainFileDeletions(x.db,x.bucket,externalKeys)).pending>0}catch{storageCleanupPending=true}
+  }
+  return x.json({ok:true,storageCleanupPending});
+ }catch(error){if(error instanceof Error&&'hasErrorLabel' in error&&typeof error.hasErrorLabel==='function'&&(error.hasErrorLabel as (label:string)=>boolean)('TransientTransactionError'))x.fail('La cuenta cambió durante la eliminación. Inténtalo de nuevo.',409);throw error}
+ finally{await session.endSession()}
+}
+
 export async function adminPost(x:Ctx,path:string,b:any){
+ if(path==='admin/user-delete')return deleteUser(x,b);
  if(path==='admin/provider-analysis'){
   admin(x);
   const id=x.sid(b.id),document=x.sid(b.document),runId=x.sid(b.runId);
@@ -174,21 +241,28 @@ export async function adminPost(x:Ctx,path:string,b:any){
  if(path==='admin/role'){
   admin(x);if(typeof b.admin!=='boolean')x.fail('Datos inválidos.');
   const filter=b.email!==undefined?{email:required(b.email,'Correo',254).toLowerCase()}:{id:x.sid(b.id)};
-  const person:any=await x.one('users',filter,{id:1,name:1,role:1,active:1});
-  if(!person)x.fail('No hay una cuenta con ese correo.',404);
-  if(person.id===x.user.id)x.fail('No puedes cambiar tus propios permisos.',403);
-  if(b.admin){
-   if(person.role==='admin')x.fail(`${person.name} ya es administrador.`,409);
-   if(person.active===false)x.fail('Reactiva la cuenta antes de darle permisos.',409);
-   // Admins don't offer services; a provider must leave that role first.
-   if(await x.one('providers',{id:person.id,status:{$ne:'Rechazada'}}))x.fail(`${person.name} tiene un registro de proveedor; un administrador no puede ofrecer servicios.`,409);
-  }else{
-   if(person.role!=='admin')x.fail(`${person.name} no es administrador.`,409);
-   if(await x.c('users').countDocuments({role:'admin',active:{$ne:false}})<=1)x.fail('Debe quedar al menos un administrador.',409);
-  }
-  await x.c('users').updateOne({id:person.id},{$set:{role:b.admin?'admin':'cliente'}});
-  await audit(x,b.admin?'role.admin':'role.remove',person);
-  return x.json({ok:true});
+  const session=x.db.client.startSession();
+  try{
+   return await session.withTransaction(async()=>{
+    const users=x.db.collection<any>('users');
+    await x.db.collection('settings').updateOne({key:'app'},{$inc:{adminDeleteFence:1}},{upsert:true,session});
+    if(!await users.findOne({id:x.user.id,role:'admin',active:{$ne:false}},{session}))x.fail('Acceso reservado a administración.',403);
+    const person=await users.findOne({...filter,role:{$ne:'eliminado'}},{session});
+    if(!person)x.fail('No hay una cuenta con ese correo.',404);
+    if(person.id===x.user.id)x.fail('No puedes cambiar tus propios permisos.',403);
+    if(b.admin){
+     if(person.role==='admin')x.fail(`${person.name} ya es administrador.`,409);
+     if(person.active===false)x.fail('Reactiva la cuenta antes de darle permisos.',409);
+     if(await x.db.collection('providers').findOne({id:person.id,status:{$ne:'Rechazada'}},{session}))x.fail(`${person.name} tiene un registro de proveedor; un administrador no puede ofrecer servicios.`,409);
+    }else{
+     if(person.role!=='admin')x.fail(`${person.name} no es administrador.`,409);
+     if(await users.countDocuments({role:'admin',active:{$ne:false}},{session})<=1)x.fail('Debe quedar al menos un administrador.',409);
+    }
+    if(!(await users.updateOne({id:person.id,role:person.role,active:{$ne:false}},{$set:{role:b.admin?'admin':'cliente'}},{session})).matchedCount)x.fail('La cuenta cambió durante la operación.',409);
+    await x.db.collection('audit_log').insertOne({id:x.id(),at:new Date().toISOString(),actor:x.user.id,actor_name:x.user.name,action:b.admin?'role.admin':'role.remove',target:person.id,target_name:person.name,detail:null},{session});
+    return x.json({ok:true});
+   },{readConcern:{level:'snapshot'},writeConcern:{w:'majority'}});
+  }finally{await session.endSession()}
  }
  // A report ends with a written decision and the state the job continues in.
  if(path==='admin/report-resolve'){
@@ -196,7 +270,7 @@ export async function adminPost(x:Ctx,path:string,b:any){
   const outcome=String(b.outcome||'');if(!['Asignada','Terminado','Completado','Cancelada'].includes(outcome))x.fail('Elige cómo continúa el trabajo.');
   const resolution=required(b.resolution,'Decisión',1000);
   await x.c('reports').updateOne({id:report.id},{$set:{status:'Resuelto',resolution,resolved_by:x.user.id,resolved_at:new Date().toISOString()}});
-  await x.c('requests').updateOne({id:report.request,status:'En disputa'},{$set:{status:outcome,...(outcome==='Cancelada'?{closed_reason:resolution}:{})}});
+  await x.c('requests').updateOne({id:report.request,status:'En disputa'},{$set:{status:outcome,...(outcome==='Cancelada'?{closed_reason:resolution,closed_by:'admin'}:{})}});
   await audit(x,'report.resolve',await x.one('users',{id:report.against},{id:1,name:1}),`${outcome}: ${resolution}`);
   return x.json({ok:true});
  }
@@ -210,13 +284,34 @@ export async function adminPost(x:Ctx,path:string,b:any){
   return x.json({ok:true});
  }
  if(path==='admin/request-close'){
-  admin(x);const r=await x.one('requests',{id:x.sid(b.id)});if(!r)x.fail('Solicitud no encontrada.',404);
-  if(!['Activa','Asignada','En disputa'].includes(r.status))x.fail('Esta solicitud ya está cerrada.',409);
-  const why=required(b.reason,'Motivo',300);
-  await x.c('requests').updateOne({id:r.id},{$set:{status:'Cancelada',closed_reason:why}});
-  await x.c('quotes').updateMany({request:r.id,status:'Pendiente'},{$set:{status:'No seleccionada'}});
-  await audit(x,'request.close',await x.one('users',{id:r.owner},{id:1,name:1}),`${r.trade}: ${why}`);
-  return x.json({ok:true});
+  admin(x);const id=x.sid(b.id),why=required(b.reason,'Motivo',300);
+  const session=x.db.client.startSession();
+  try{return await session.withTransaction(async()=>{
+   const requests=x.db.collection<any>('requests'),r=await requests.findOne({id},{session});
+   if(!r)x.fail('Solicitud no encontrada.',404);
+   if(!['Activa','Asignada','Terminado','En disputa'].includes(r.status))x.fail('Esta solicitud ya está cerrada.',409);
+   if(!(await requests.updateOne({id:r.id,status:r.status},{$set:{status:'Cancelada',closed_reason:why,closed_by:'admin'}},{session})).matchedCount)x.fail('La solicitud cambió durante la cancelación.',409);
+   await x.db.collection('quotes').updateMany({request:r.id,status:{$in:['Pendiente','Aceptada']}},[{$set:{status:{$cond:[{$eq:['$status','Aceptada']},'Cancelada','No seleccionada']}}}],{session});
+   await x.db.collection('reports').updateMany({request:r.id,status:'Abierto'},{$set:{status:'Resuelto',resolution:`Cancelado por administración: ${why}`,resolved_by:x.user.id,resolved_at:new Date().toISOString()}},{session});
+   const owner=await x.db.collection<any>('users').findOne({id:r.owner},{session,projection:{name:1}});
+   await x.db.collection('audit_log').insertOne({id:x.id(),at:new Date().toISOString(),actor:x.user.id,actor_name:x.user.name,action:'request.close',target:r.owner,target_name:owner?.name??null,detail:`${r.trade}: ${why}`},{session});
+   return x.json({ok:true});
+  },{readConcern:{level:'snapshot'},writeConcern:{w:'majority'}})}finally{await session.endSession()}
+ }
+ if(path==='admin/quote-withdraw'){
+  admin(x);const id=x.sid(b.id),why=required(b.reason,'Motivo',300);
+  const session=x.db.client.startSession();
+  try{return await session.withTransaction(async()=>{
+   const quotes=x.db.collection<any>('quotes'),quote=await quotes.findOne({id},{session});
+   if(!quote)x.fail('Cotización no encontrada.',404);
+   if(quote.status!=='Pendiente')x.fail('Solo se puede retirar una cotización pendiente.',409);
+   const request=await x.db.collection<any>('requests').findOne({id:quote.request},{session});
+   if(!request||request.status!=='Activa')x.fail('La solicitud ya no está activa.',409);
+   if(!(await quotes.updateOne({id,status:'Pendiente'},{$set:{status:'Retirada',closed_reason:why}},{session})).matchedCount)x.fail('La cotización cambió durante la cancelación.',409);
+   const provider=await x.db.collection<any>('users').findOne({id:quote.provider},{session,projection:{name:1}});
+   await x.db.collection('audit_log').insertOne({id:x.id(),at:new Date().toISOString(),actor:x.user.id,actor_name:x.user.name,action:'quote.withdraw',target:quote.provider,target_name:provider?.name??null,detail:`${request.trade}: ${why}`},{session});
+   return x.json({ok:true});
+  },{readConcern:{level:'snapshot'},writeConcern:{w:'majority'}})}finally{await session.endSession()}
  }
  if(path==='admin/settings'){
   admin(x);let update:Partial<Settings>;
@@ -234,7 +329,7 @@ export async function adminPost(x:Ctx,path:string,b:any){
  }
  if(!['approve','reject','account-active','provider-active'].includes(path))return null;
  admin(x);
- const person:any=await x.one('users',{id:x.sid(b.id)},{id:1,name:1,role:1});
+ const person:any=await x.one('users',{id:x.sid(b.id),role:{$ne:'eliminado'}},{id:1,name:1,role:1});
  if(!person)x.fail('Usuario no encontrado.',404);
  if(path==='approve'){
   await decideProvider(x,{id:person.id,decision:'approve'});
